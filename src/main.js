@@ -25,10 +25,15 @@ import {
   getRankTier,
   getNextRankTarget,
   getRankProgress,
+  hydrateCloudProgress,
+  useLocalProgress,
 } from "./game/state.js";
 import { startAnimatedBackground } from "./ui/animatedBackground.js";
 import {
   initializeArenaBackend,
+  signInAsGuest,
+  upgradeGuestAccount,
+  linkGuestProvider,
   signUp as backendSignUp,
   signIn as backendSignIn,
   signOut as backendSignOut,
@@ -47,6 +52,7 @@ import {
   removeArenaSubscriptions,
   reportRemotePlayer,
   blockRemotePlayer,
+  openRemotePack,
   isSupabaseConfigured,
 } from "./services/arenaBackend.js";
 
@@ -68,6 +74,7 @@ let matchmakingTimer = null;
 let subscribedMatchId = null;
 let packOverlay = null;
 let revealedPackCards = 0;
+let packOpeningRequestInFlight = false;
 
 const backend = {
   configured: isSupabaseConfigured,
@@ -78,6 +85,7 @@ const backend = {
   remoteMatch: null,
   presence: {},
   authMode: "signin",
+  upgradingGuest: false,
   message: "",
   error: "",
 };
@@ -137,6 +145,7 @@ async function refreshPlayerData() {
   backend.profile = result.profile;
   backend.decks = result.decks;
   backend.leaderboard = result.leaderboard;
+  hydrateCloudProgress(result.profile, result.playerCards, result.packOpenings);
 }
 
 async function handleSession(session) {
@@ -152,6 +161,7 @@ async function handleSession(session) {
     backend.profile = null;
     backend.decks = [];
     backend.remoteMatch = null;
+    useLocalProgress();
   }
   renderApp();
 }
@@ -159,7 +169,11 @@ async function handleSession(session) {
 async function bootstrapBackend() {
   if (!backend.configured) return;
   try {
-    const { session } = await initializeArenaBackend(handleSession);
+    let { session } = await initializeArenaBackend(handleSession);
+    if (!session) {
+      const guest = await signInAsGuest();
+      session = guest.session;
+    }
     await handleSession(session);
   } catch (error) {
     backend.error = error.message;
@@ -175,6 +189,7 @@ function renderShell(content, active = gameState.mode) {
   const coins = backend.profile?.coins ?? gameState.coins;
   const avatar = escapeHtml(backend.profile?.avatar || "MP");
   const username = escapeHtml(backend.profile?.username || "MADDYPUP");
+  const isGuest = Boolean(backend.session?.user?.is_anonymous);
   return `
     <section class="pvx-shell">
       <header class="pvx-topbar">
@@ -186,7 +201,7 @@ function renderShell(content, active = gameState.mode) {
           <button class="${active === "battle" ? "active" : ""}" data-action="go-battle"><span>⚔</span><b>Solo</b></button>
           <button class="${active === "online" ? "active" : ""}" data-action="go-online"><span>◉</span><b>Online</b></button>
         </nav>
-        <div class="pvx-account"><span class="pvx-coins">◈ <b>${coins}</b></span><span class="pvx-avatar">${avatar}</span><span class="pvx-user"><b>${username}</b><small>Level ${backend.profile?.level ?? gameState.level}</small></span>${backend.session ? `<button class="pvx-signout" data-action="backend-signout">Sign out</button>` : ""}</div>
+        <div class="pvx-account"><span class="pvx-coins">◈ <b>${coins}</b></span><span class="pvx-avatar">${avatar}</span><span class="pvx-user"><b>${username}</b><small>Level ${backend.profile?.level ?? gameState.level}</small></span>${isGuest ? `<button class="pvx-signout" data-action="upgrade-guest">Secure account</button>` : backend.session ? `<button class="pvx-signout" data-action="backend-signout">Sign out</button>` : ""}</div>
       </header>
       <main class="pvx-main">${content}</main>
       <nav class="pvx-mobile-nav" aria-label="Mobile navigation">
@@ -300,6 +315,7 @@ function renderRankGem(rating = gameState.rankRating) {
 
 function renderOnlineHub() {
   if (backend.configured && !backend.session) return renderAuth();
+  if (backend.upgradingGuest) return renderGuestUpgrade();
   const rating = backend.profile?.rank_rating ?? gameState.rankRating;
   const modes = [
     { id: "casual", tag: "Unranked", title: "Casual Match", copy: "Fast real-player battles with no rating loss. Test decks, earn XP and have fun.", icon: "ϟ", perks: ["No rating loss", "+XP & coins"] },
@@ -307,6 +323,10 @@ function renderOnlineHub() {
     { id: "friend", tag: "Private room", title: "Friend Battle", copy: "Create a six-character room code and invite exactly the player you want.", icon: "∞", perks: ["Private invite", "Preset reactions"] },
   ];
   return renderShell(`<section class="pvx-online-hub"><header><div><p class="pvx-eyebrow"><i></i> Competitive universe</p><h1>ARENA <span>LEAGUE</span></h1><p>Real challengers. Protected matches. One path to PupVerse Champion.</p></div><article class="pvx-current-rank">${renderRankGem(rating)}<div><small>Current rank</small><h2>${getRankTier(rating)}</h2><p>${rating} RP · ${getNextRankTarget(rating) - rating} to promotion</p><div class="pvx-progress"><i style="width:${getRankProgress(rating)}%"></i></div></div></article></header><section class="pvx-mode-grid">${modes.map((mode) => `<article class="pvx-mode ${mode.featured ? "featured" : ""}">${mode.featured ? `<span class="pvx-featured">Flagship mode</span>` : ""}<div class="pvx-mode-art"><div class="pvx-mode-rings"></div><b>${mode.icon}</b></div><div class="pvx-mode-copy"><small>${mode.tag}</small><h2>${mode.title}</h2><p>${mode.copy}</p><div>${mode.perks.map((perk) => `<span>${perk}</span>`).join("")}</div><button data-action="online-mode" data-mode="${mode.id}">${mode.id === "friend" ? "Create or join" : mode.id === "ranked" ? "Enter ranked" : "Find challenger"}<i>→</i></button></div></article>`).join("")}</section>${backend.leaderboard.length ? `<section class="pvx-leaderboard"><div><p class="pvx-eyebrow"><i></i> Live standings</p><h2>Season leaders</h2></div><ol>${backend.leaderboard.slice(0, 5).map((player) => `<li><b>#${player.position}</b><span class="pvx-avatar">${escapeHtml(player.avatar)}</span><strong>${escapeHtml(player.username)}</strong><small>${escapeHtml(player.rank_tier)}</small><em>${player.rank_rating} RP</em></li>`).join("")}</ol></section>` : `<section class="pvx-online-note"><span>◆</span><p><strong>${backend.configured ? "Secure multiplayer enabled" : "Multiplayer preview mode"}</strong>${backend.configured ? "Supabase authentication, private rooms and server-side match decisions are connected." : "The full flow is playable locally. Add Supabase keys to connect real accounts."}</p></section>`}</section>`, "online");
+}
+
+function renderGuestUpgrade() {
+  return renderShell(`<section class="pvx-auth"><div class="pvx-auth-art"><div class="pvx-auth-orbits"></div>${renderRankGem(gameState.rankRating)}<p class="pvx-eyebrow"><i></i> Keep this Vault forever</p><h1>SECURE YOUR<br><span>PLAYER ACCOUNT</span></h1><p>Link an email or social identity without losing your cards, coins, decks or rank.</p><div><span>◆ Same player ID</span><span>◆ Vault preserved</span><span>◆ Cross-device access</span></div></div><form class="pvx-auth-card" data-guest-upgrade-form><p>Upgrade this guest player</p><label><span>Username</span><input id="upgradeUsername" autocomplete="username" minlength="3" maxlength="20" value="${escapeHtml(backend.profile?.username || "")}" required></label><label><span>Email</span><input id="upgradeEmail" type="email" autocomplete="email" placeholder="you@example.com" required></label>${backend.error ? `<p class="pvx-form-error">${escapeHtml(backend.error)}</p>` : ""}${backend.message ? `<p class="pvx-form-message">${escapeHtml(backend.message)}</p>` : ""}<button class="pvx-auth-submit" data-action="guest-upgrade-submit" type="submit">Link email securely<span>→</span></button><button type="button" data-action="guest-link-provider" data-provider="google">Continue with Google</button><button type="button" data-action="cancel-guest-upgrade">Back to Arena</button><small>Your current anonymous player ID is retained. Confirm the email link before signing out.</small></form></section>`, "online");
 }
 
 function renderAuth() {
@@ -407,7 +427,10 @@ function renderApp() {
   } else screen = renderHome();
   app.innerHTML = `<canvas id="spaceCanvas"></canvas><main class="app-shell">${screen}</main>${renderPackOverlay()}`;
   app.onclick = handleClick;
-  app.onsubmit = (event) => { event.preventDefault(); event.target.querySelector('[data-action="auth-submit"]')?.click(); };
+  app.onsubmit = (event) => {
+    event.preventDefault();
+    event.target.querySelector('[data-action="auth-submit"], [data-action="guest-upgrade-submit"]')?.click();
+  };
   document.body.classList.toggle("pvx-modal-open", Boolean(selectedVaultCardId || packOverlay));
   setupImageFallbacks();
   startAnimatedBackground();
@@ -459,12 +482,38 @@ async function beginRemoteQueue(mode) {
   maintainQueue(mode, deck.id, (id) => enterRemoteMatch(id), (error) => notice(error?.message || "Queue heartbeat failed"));
 }
 
-function finishPackAnimation() {
-  if (!packOverlay || packOverlay.phase !== "opening") return;
-  finishPackOpening();
-  packOverlay = { ...packOverlay, phase: "reveal", cards: [...gameState.lastOpenedPack] };
-  revealedPackCards = 0;
-  renderApp();
+async function finishPackAnimation() {
+  if (!packOverlay || packOverlay.phase !== "opening" || packOpeningRequestInFlight) return;
+  packOpeningRequestInFlight = true;
+  try {
+    if (backend.configured && backend.session) {
+      const result = await openRemotePack(packOverlay.packId, packOverlay.requestId);
+      await refreshPlayerData();
+      const pulledCards = (result.card_ids || [])
+        .map((cardId) => cards.find((card) => card.id === cardId))
+        .filter(Boolean);
+      gameState.lastOpenedPack = pulledCards;
+      gameState.isOpeningPack = false;
+      gameState.activePackId = null;
+    } else {
+      finishPackOpening();
+    }
+    packOverlay = { ...packOverlay, phase: "reveal", cards: [...gameState.lastOpenedPack] };
+    revealedPackCards = 0;
+    renderApp();
+  } catch (error) {
+    if (backend.configured && backend.session) {
+      renderApp();
+      notice(`${error.message || "The protected pack referee could not complete this opening."} Tap reveal to retry safely.`);
+    } else {
+      finishPackOpening();
+      packOverlay = null;
+      renderApp();
+      notice(error.message || "Pack opening failed.");
+    }
+  } finally {
+    packOpeningRequestInFlight = false;
+  }
 }
 
 function notice(message) {
@@ -490,10 +539,15 @@ async function handleClick(event) {
   if (action === "close-card") { selectedVaultCardId = null; vaultCardFlipped = false; return renderApp(); }
   if (action === "flip-card") { vaultCardFlipped = !vaultCardFlipped; return renderApp(); }
   if (action === "filter-vault") { setCollectionFilter(target.dataset.filter); return renderApp(); }
-  if (action === "dev-coins") { addDevCoins(); return renderApp(); }
+  if (action === "dev-coins") {
+    const added = addDevCoins();
+    renderApp();
+    if (!added) notice("Test coins are disabled for persistent player accounts.");
+    return;
+  }
   if (action === "open-pack") {
     if (!startPackOpening(target.dataset.packId)) return renderApp();
-    packOverlay = { phase: "opening", packId: target.dataset.packId };
+    packOverlay = { phase: "opening", packId: target.dataset.packId, requestId: crypto.randomUUID() };
     renderApp();
     clearTimeout(packTimer);
     packTimer = setTimeout(finishPackAnimation, 2800);
@@ -576,6 +630,26 @@ async function handleClick(event) {
     } catch (error) { return notice(error.message); }
   }
   if (action === "auth-tab") { backend.authMode = target.dataset.mode === "signup" ? "signup" : "signin"; backend.error = ""; backend.message = ""; return renderApp(); }
+  if (action === "upgrade-guest") { backend.upgradingGuest = true; backend.error = ""; backend.message = ""; openArenaLeague(); return renderApp(); }
+  if (action === "cancel-guest-upgrade") { backend.upgradingGuest = false; backend.error = ""; backend.message = ""; return renderApp(); }
+  if (action === "guest-upgrade-submit") {
+    event.preventDefault();
+    backend.error = ""; backend.message = ""; target.disabled = true;
+    try {
+      await upgradeGuestAccount({
+        email: document.querySelector("#upgradeEmail")?.value.trim(),
+        username: document.querySelector("#upgradeUsername")?.value.trim(),
+      });
+      backend.message = "Confirmation sent. Open that email on this device before signing out.";
+      await refreshPlayerData();
+    } catch (error) { backend.error = error.message; }
+    return renderApp();
+  }
+  if (action === "guest-link-provider") {
+    try { await linkGuestProvider(target.dataset.provider); }
+    catch (error) { backend.error = error.message; return renderApp(); }
+    return;
+  }
   if (action === "auth-submit") {
     event.preventDefault();
     backend.error = ""; backend.message = ""; target.disabled = true;

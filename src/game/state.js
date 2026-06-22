@@ -2,6 +2,7 @@ import { cards } from "../data/cards.js";
 import { packs } from "../data/packs.js";
 
 const SAVE_KEY = "pupverse-save-v3";
+let progressSource = "local";
 
 function createDefaultSave() {
   return {
@@ -68,9 +69,48 @@ export const gameState = {
   activePackId: null,
 
   collectionFilter: "All",
+  favouriteCards: [],
+  packOpeningHistory: [],
 };
 
+export function hydrateCloudProgress(profile, playerCards = [], packOpenings = []) {
+  if (!profile) return;
+  progressSource = "cloud";
+  const collection = playerCards.flatMap((entry) =>
+    Array.from({ length: Math.max(0, Number(entry.quantity) || 0) }, () => entry.card_id)
+  );
+  const latestOpening = packOpenings[0];
+
+  Object.assign(gameState, {
+    coins: Number(profile.coins) || 0,
+    level: Number(profile.level) || 1,
+    xp: Number(profile.xp) || 0,
+    rankRating: Number(profile.rank_rating) || 0,
+    onlineWins: Number(profile.online_wins) || 0,
+    rankedWins: Number(profile.ranked_wins) || 0,
+    collection,
+    favouriteCards: playerCards.filter((entry) => entry.favourite).map((entry) => entry.card_id),
+    packOpeningHistory: packOpenings,
+    lastOpenedPack: (latestOpening?.card_ids || [])
+      .map((cardId) => cards.find((card) => card.id === cardId))
+      .filter(Boolean),
+  });
+}
+
+export function useLocalProgress() {
+  progressSource = "local";
+  Object.assign(gameState, loadSave(), {
+    favouriteCards: [],
+    packOpeningHistory: [],
+  });
+}
+
+export function isCloudProgress() {
+  return progressSource === "cloud";
+}
+
 export function saveGame() {
+  if (progressSource === "cloud") return;
   const saveData = {
     coins: gameState.coins,
     collection: gameState.collection,
@@ -137,10 +177,12 @@ export function chooseBattleStat(statName) {
   gameState.totalBattles += 1;
 
   if (playerValue > computerValue) {
-    gameState.coins += 5;
+    if (progressSource === "local") gameState.coins += 5;
     gameState.playerWins += 1;
     gameState.winner = "player";
-    gameState.resultMessage = `You won with ${cleanStatName}! ${playerValue} beats ${computerValue}. +5 coins`;
+    gameState.resultMessage = progressSource === "local"
+      ? `You won with ${cleanStatName}! ${playerValue} beats ${computerValue}. +5 coins`
+      : `Training win with ${cleanStatName}! ${playerValue} beats ${computerValue}. Online rewards are server-controlled.`;
   } else if (playerValue < computerValue) {
     gameState.computerWins += 1;
     gameState.winner = "computer";
@@ -180,6 +222,12 @@ export function startPackOpening(packId) {
 }
 
 export function finishPackOpening() {
+  if (progressSource === "cloud") {
+    gameState.isOpeningPack = false;
+    gameState.activePackId = null;
+    gameState.shopMessage = "Online packs must be opened by the protected referee.";
+    return;
+  }
   const selectedPack = packs.find((pack) => pack.id === gameState.activePackId);
 
   if (!selectedPack) {
@@ -287,9 +335,14 @@ export function getCollectionProgress() {
 }
 
 export function addDevCoins() {
+  if (progressSource === "cloud") {
+    gameState.shopMessage = "Test coins are disabled for persistent player accounts.";
+    return false;
+  }
   gameState.coins += 25;
   gameState.shopMessage = "Dev coins added for testing packs.";
   saveGame();
+  return true;
 }
 
 export function resetGameStats() {
