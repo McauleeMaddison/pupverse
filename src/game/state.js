@@ -1,5 +1,6 @@
 import { cards } from "../data/cards.js";
 import { packs } from "../data/packs.js";
+import { getBaseStatValue, resolveStatContest } from "./battleRules.js";
 
 const SAVE_KEY = "pupverse-save-v3";
 let progressSource = "local";
@@ -62,6 +63,7 @@ export const gameState = {
   computerRevealed: false,
   resultMessage: "Start a battle to enter the PupVerse arena.",
   winner: null,
+  roundResult: null,
 
   lastOpenedPack: [],
   shopMessage: "Choose a pack to open. Each pack pulls from its own Pup collection.",
@@ -128,21 +130,14 @@ export function saveGame() {
 }
 
 export function getStatValue(card, statName) {
-  if (!card || !card.stats) return 0;
+  return getBaseStatValue(card, statName);
+}
 
-  if (typeof card.stats[statName] === "number") {
-    return card.stats[statName];
-  }
-
-  if (statName === "defence" && typeof card.stats.defense === "number") {
-    return card.stats.defense;
-  }
-
-  if (statName === "defense" && typeof card.stats.defence === "number") {
-    return card.stats.defence;
-  }
-
-  return 0;
+function formatBoostNote(card, boost, statName) {
+  if (!boost) return "";
+  const label = statName.charAt(0).toUpperCase() + statName.slice(1);
+  const abilityName = card?.ability?.name || card?.ability_name || "Ability";
+  return `${abilityName} adds +${boost} ${label}.`;
 }
 
 export function startComputerBattle() {
@@ -162,34 +157,41 @@ export function startComputerBattle() {
   gameState.computerRevealed = false;
   gameState.resultMessage = "Choose your strongest stat to battle!";
   gameState.winner = null;
+  gameState.roundResult = null;
 }
 
 export function chooseBattleStat(statName) {
   if (!gameState.playerCard || !gameState.computerCard) return;
   if (gameState.computerRevealed) return;
 
-  const playerValue = getStatValue(gameState.playerCard, statName);
-  const computerValue = getStatValue(gameState.computerCard, statName);
+  const result = resolveStatContest(gameState.playerCard, gameState.computerCard, statName);
+  const playerValue = result.playerValue;
+  const computerValue = result.opponentValue;
   const cleanStatName = statName.charAt(0).toUpperCase() + statName.slice(1);
+  const boostNotes = [
+    formatBoostNote(gameState.playerCard, result.playerBoost, result.selectedStat),
+    formatBoostNote(gameState.computerCard, result.opponentBoost, result.selectedStat),
+  ].filter(Boolean).join(" ");
 
-  gameState.selectedStat = statName;
+  gameState.selectedStat = result.selectedStat;
   gameState.computerRevealed = true;
   gameState.totalBattles += 1;
+  gameState.roundResult = result;
 
-  if (playerValue > computerValue) {
+  if (result.winner === "player") {
     if (progressSource === "local") gameState.coins += 5;
     gameState.playerWins += 1;
     gameState.winner = "player";
     gameState.resultMessage = progressSource === "local"
-      ? `You won with ${cleanStatName}! ${playerValue} beats ${computerValue}. +5 coins`
-      : `Training win with ${cleanStatName}! ${playerValue} beats ${computerValue}. Online rewards are server-controlled.`;
-  } else if (playerValue < computerValue) {
+      ? `You won with ${cleanStatName}! ${playerValue} beats ${computerValue}. ${boostNotes} +5 coins`
+      : `Training win with ${cleanStatName}! ${playerValue} beats ${computerValue}. ${boostNotes} Online rewards are server-controlled.`;
+  } else if (result.winner === "opponent") {
     gameState.computerWins += 1;
     gameState.winner = "computer";
-    gameState.resultMessage = `Computer won with ${cleanStatName}! ${computerValue} beats ${playerValue}.`;
+    gameState.resultMessage = `Computer won with ${cleanStatName}! ${computerValue} beats ${playerValue}. ${boostNotes}`;
   } else {
     gameState.winner = "draw";
-    gameState.resultMessage = `Draw! Both cards had ${playerValue} ${cleanStatName}.`;
+    gameState.resultMessage = `Draw! Both cards had ${playerValue} ${cleanStatName}. ${boostNotes}`;
   }
 
   saveGame();
@@ -351,6 +353,7 @@ export function resetGameStats() {
   gameState.totalBattles = 0;
   gameState.resultMessage = "Battle stats reset.";
   gameState.winner = null;
+  gameState.roundResult = null;
 
   saveGame();
 }
@@ -489,6 +492,7 @@ export function confirmArenaMatch() {
     ratingChange: 0,
     coinReward: 0,
     xpReward: 0,
+    roundResult: null,
     // JSON copies model immutable match snapshots created at match start.
     playerDeck: JSON.parse(JSON.stringify(playerDeck)),
     opponentDeck: JSON.parse(JSON.stringify(opponentDeck)),
@@ -501,21 +505,29 @@ export function chooseOnlineStat(statName) {
   if (!match || match.complete || match.selectedStat) return;
 
   const index = Math.min(match.round - 1, match.playerDeck.length - 1);
-  const playerValue = getStatValue(match.playerDeck[index], statName);
-  const opponentValue = getStatValue(match.opponentDeck[index], statName);
-  match.selectedStat = statName;
+  const result = resolveStatContest(match.playerDeck[index], match.opponentDeck[index], statName);
+  const playerValue = result.playerValue;
+  const opponentValue = result.opponentValue;
+  const cleanStatName = result.selectedStat.charAt(0).toUpperCase() + result.selectedStat.slice(1);
+  const boostNotes = [
+    formatBoostNote(match.playerDeck[index], result.playerBoost, result.selectedStat),
+    formatBoostNote(match.opponentDeck[index], result.opponentBoost, result.selectedStat),
+  ].filter(Boolean).join(" ");
 
-  if (playerValue > opponentValue) {
+  match.selectedStat = result.selectedStat;
+  match.roundResult = result;
+
+  if (result.winner === "player") {
     match.playerScore += 1;
     match.roundWinner = "player";
-    match.roundMessage = `Round secured — ${playerValue} beats ${opponentValue}.`;
-  } else if (playerValue < opponentValue) {
+    match.roundMessage = `Round secured — ${cleanStatName} ${playerValue} beats ${opponentValue}. ${boostNotes}`;
+  } else if (result.winner === "opponent") {
     match.opponentScore += 1;
     match.roundWinner = "opponent";
-    match.roundMessage = `${match.opponent.username} takes it — ${opponentValue} beats ${playerValue}.`;
+    match.roundMessage = `${match.opponent.username} takes it — ${cleanStatName} ${opponentValue} beats ${playerValue}. ${boostNotes}`;
   } else {
     match.roundWinner = "draw";
-    match.roundMessage = `Dead even at ${playerValue}. No point awarded.`;
+    match.roundMessage = `Dead even at ${playerValue} ${cleanStatName}. ${boostNotes}`;
   }
 
   const finalRound = match.round >= 3 || match.playerScore >= 2 || match.opponentScore >= 2;
@@ -548,6 +560,7 @@ export function advanceArenaRound() {
   match.round += 1;
   match.selectedStat = null;
   match.roundWinner = null;
+  match.roundResult = null;
   match.roundMessage = "New round. Choose the stat that gives your pup the edge.";
 }
 

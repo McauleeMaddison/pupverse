@@ -31,6 +31,7 @@ import {
 } from "./game/state.js";
 import { startAnimatedBackground } from "./ui/animatedBackground.js";
 import { renderCardImage, setupImageFallbacks } from "./ui/cardImages.js";
+import { getAbilityBoost, getEffectiveStatValue, isPrestigeRarity } from "./game/battleRules.js";
 import { escapeHtml, titleCase } from "./utils/format.js";
 import {
   initializeArenaBackend,
@@ -172,6 +173,20 @@ function getShowcaseCards() {
     .map((id) => cards.find((card) => card.id === id)).filter(Boolean);
 }
 
+function renderCombatStatValue(card, statKey) {
+  const boost = getAbilityBoost(card, statKey);
+  return `<strong>${getEffectiveStatValue(card, statKey)}</strong>${boost ? `<i class="pvx-stat-boost">+${boost} ability</i>` : ""}`;
+}
+
+function renderRoundValue(value, boost = 0) {
+  return `<strong>${value}${boost ? `<small>+${boost}</small>` : ""}</strong>`;
+}
+
+function getPrestigeWinClass(card, won) {
+  if (!won || !isPrestigeRarity(card)) return "";
+  return `prestige-winner rarity-${String(card.rarity || "").toLowerCase()}`;
+}
+
 function renderHome() {
   const progress = getCollectionProgress();
   const showcase = getShowcaseCards();
@@ -248,17 +263,19 @@ function renderCardModal() {
 
 function renderBattleCard(card, owner, hidden = false, player = false) {
   if (hidden) return `<article class="pvx-battle-card mystery"><span>${owner}</span><div class="pvx-mystery-card"><div class="pvx-mystery-rings"></div><b>PV</b><strong>?</strong><small>Opponent card encrypted</small></div></article>`;
-  return `<article class="pvx-battle-card ${player ? "player" : "rival"}"><span>${owner}</span><div class="pvx-battle-image">${renderCardImage(card)}<div class="pvx-card-sheen"></div>${gameState.selectedStat ? `<b>${titleCase(gameState.selectedStat)} locked</b>` : ""}</div><h3>${escapeHtml(card.name)}</h3><p>${escapeHtml(card.rarity)} · ${escapeHtml(card.element)}</p></article>`;
+  const won = gameState.computerRevealed && ((player && gameState.winner === "player") || (!player && gameState.winner === "computer"));
+  return `<article class="pvx-battle-card ${player ? "player" : "rival"} ${getPrestigeWinClass(card, won)}"><span>${owner}</span><div class="pvx-battle-image">${renderCardImage(card)}<div class="pvx-card-sheen"></div>${won && isPrestigeRarity(card) ? `<div class="pvx-win-burst"><i></i><i></i><i></i><b>${escapeHtml(card.rarity)} Victory</b></div>` : ""}${gameState.selectedStat ? `<b>${titleCase(gameState.selectedStat)} locked</b>` : ""}</div><h3>${escapeHtml(card.name)}</h3><p>${escapeHtml(card.rarity)} · ${escapeHtml(card.element)}</p></article>`;
 }
 
 function renderSoloBattle() {
   if (!gameState.playerCard || !gameState.computerCard) startComputerBattle();
   const selected = gameState.selectedStat;
+  const result = gameState.roundResult;
   return renderShell(`
     <section class="pvx-arena">
       <header class="pvx-arena-head"><div><p class="pvx-eyebrow"><i></i> Solo combat simulation</p><h1>BATTLE <span>ARENA</span></h1></div><div class="pvx-scoreboard"><article><small>You</small><strong>${gameState.playerWins}</strong></article><span>VS</span><article><small>CPU</small><strong>${gameState.computerWins}</strong></article></div><button data-action="reset-solo">Reset run</button></header>
-      <main class="pvx-arena-board"><div class="pvx-arena-sky"></div><div class="pvx-arena-floor"></div><div class="pvx-arena-beam beam-left"></div><div class="pvx-arena-beam beam-right"></div>${renderBattleCard(gameState.playerCard, "Your challenger", false, true)}<section class="pvx-referee"><span><i></i> Arena referee online</span><div class="pvx-vs-core"><b>VS</b><i></i></div><p class="${gameState.winner || ""}">${escapeHtml(gameState.resultMessage)}</p>${selected ? `<div class="pvx-round-values"><strong>${getStatValue(gameState.playerCard, selected)}</strong><span>${titleCase(selected)}</span><strong>${getStatValue(gameState.computerCard, selected)}</strong></div>` : `<small>Choose the stat that gives your pup the edge</small>`}</section>${renderBattleCard(gameState.computerCard, "CPU challenger", !gameState.computerRevealed)}</main>
-      <section class="pvx-stat-dock"><div><small>${gameState.computerRevealed ? "Official result" : "Your move"}</small><strong>${gameState.computerRevealed ? titleCase(gameState.winner) : "Select one combat stat"}</strong></div><div class="pvx-stat-grid">${stats.map((stat) => `<button data-action="solo-stat" data-stat="${stat.key}" ${gameState.computerRevealed ? "disabled" : ""}><span>${stat.icon}</span><small>${stat.short}</small><strong>${getStatValue(gameState.playerCard, stat.key)}</strong><em>${stat.label}</em></button>`).join("")}</div>${gameState.computerRevealed ? `<button class="pvx-next" data-action="next-solo">Next round →</button>` : `<span class="pvx-timer">◷ 20s</span>`}</section>
+      <main class="pvx-arena-board"><div class="pvx-arena-sky"></div><div class="pvx-arena-floor"></div><div class="pvx-arena-beam beam-left"></div><div class="pvx-arena-beam beam-right"></div>${renderBattleCard(gameState.playerCard, "Your challenger", false, true)}<section class="pvx-referee"><span><i></i> Arena referee online</span><div class="pvx-vs-core"><b>VS</b><i></i></div><p class="${gameState.winner || ""}">${escapeHtml(gameState.resultMessage)}</p>${selected ? `<div class="pvx-round-values">${renderRoundValue(result?.playerValue ?? getEffectiveStatValue(gameState.playerCard, selected), result?.playerBoost)}<span>${titleCase(selected)}</span>${renderRoundValue(result?.opponentValue ?? getEffectiveStatValue(gameState.computerCard, selected), result?.opponentBoost)}</div>` : `<small>Choose the stat that gives your pup the edge</small>`}</section>${renderBattleCard(gameState.computerCard, "CPU challenger", !gameState.computerRevealed)}</main>
+      <section class="pvx-stat-dock"><div><small>${gameState.computerRevealed ? "Official result" : "Your move"}</small><strong>${gameState.computerRevealed ? titleCase(gameState.winner) : "Select one combat stat"}</strong></div><div class="pvx-stat-grid">${stats.map((stat) => `<button class="${getAbilityBoost(gameState.playerCard, stat.key) ? "has-boost" : ""}" data-action="solo-stat" data-stat="${stat.key}" ${gameState.computerRevealed ? "disabled" : ""}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(gameState.playerCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${gameState.computerRevealed ? `<button class="pvx-next" data-action="next-solo">Next round →</button>` : `<span class="pvx-timer">◷ 20s</span>`}</section>
     </section>`, "battle");
 }
 
@@ -300,10 +317,10 @@ function renderFriendRoom() {
   return renderShell(`<section class="pvx-room"><div class="pvx-room-live"><i></i> Private room ready</div><h1>${escapeHtml(gameState.friendRoomCode)}</h1><p>Send this code to your friend. Both decks lock the moment the match begins.</p><button data-action="copy-code">Copy room code</button><section><article class="ready"><span>${escapeHtml(backend.profile?.avatar || "MP")}</span><div><strong>${escapeHtml(backend.profile?.username || "MADDYPUP")}</strong><small>Ready</small></div></article><i>VS</i><article><span>?</span><div><strong>Waiting for friend</strong><small>Invite pending</small></div></article></section>${backend.configured && backend.session ? `<small>Match launches automatically when your friend joins.</small>` : `<button class="pvx-preview-match" data-action="friend-preview">Preview multiplayer battle</button>`}<button class="pvx-quiet" data-action="online-home">Close room</button></section>`, "online");
 }
 
-function renderOnlineBattleCard(card, owner, hidden = false, remote = false) {
+function renderOnlineBattleCard(card, owner, hidden = false, remote = false, won = false) {
   if (hidden || !card) return `<article class="pvx-online-card mystery"><span>${escapeHtml(owner)}</span><div><i></i><b>PV</b><strong>?</strong><small>Protected deck snapshot</small></div></article>`;
   const normalized = remote ? { ...card, frontImage: card.front_image } : card;
-  return `<article class="pvx-online-card"><span>${escapeHtml(owner)}</span><div>${renderCardImage(normalized)}<div class="pvx-card-sheen"></div></div><h3>${escapeHtml(card.name)}</h3><p>${escapeHtml(card.rarity)} · ${escapeHtml(card.element)}</p></article>`;
+  return `<article class="pvx-online-card ${getPrestigeWinClass(card, won)}"><span>${escapeHtml(owner)}</span><div>${renderCardImage(normalized)}<div class="pvx-card-sheen"></div>${won && isPrestigeRarity(card) ? `<div class="pvx-win-burst"><i></i><i></i><i></i><b>${escapeHtml(card.rarity)} Victory</b></div>` : ""}</div><h3>${escapeHtml(card.name)}</h3><p>${escapeHtml(card.rarity)} · ${escapeHtml(card.element)}</p></article>`;
 }
 
 function getRemotePlayers(state) {
@@ -319,7 +336,7 @@ function renderOnlineBattle() {
   const playerCard = match.playerDeck[index];
   const opponentCard = match.opponentDeck[index];
   const resolved = Boolean(match.selectedStat);
-  return renderOnlineBattleLayout({ mode: match.mode, round: match.round, myScore: match.playerScore, rivalScore: match.opponentScore, myName: "MADDYPUP", rivalName: match.opponent.username, myRank: getRankTier(), rivalRank: match.opponent.rankTier, myCard: playerCard, rivalCard: opponentCard, hideRival: !resolved, message: match.roundMessage, canAct: !resolved, selectedStat: match.selectedStat, remote: false, complete: match.complete });
+  return renderOnlineBattleLayout({ mode: match.mode, round: match.round, myScore: match.playerScore, rivalScore: match.opponentScore, myName: "MADDYPUP", rivalName: match.opponent.username, myRank: getRankTier(), rivalRank: match.opponent.rankTier, myCard: playerCard, rivalCard: opponentCard, hideRival: !resolved, message: match.roundMessage, canAct: !resolved, selectedStat: match.selectedStat, roundWinner: match.roundWinner, remote: false, complete: match.complete });
 }
 
 function renderRemoteBattle() {
@@ -329,12 +346,12 @@ function renderRemoteBattle() {
   const myTurn = state.match.current_turn_player_id === backend.session?.user?.id;
   const active = state.match.status === "active";
   const latest = state.rounds?.[state.rounds.length - 1];
-  return renderOnlineBattleLayout({ mode: state.match.mode, round: state.match.round_number, myScore: me?.score || 0, rivalScore: opponent?.score || 0, myName: backend.profile?.username || "PLAYER", rivalName: opponent?.profile?.username || "RIVAL", myRank: backend.profile?.rank_tier || "Rookie", rivalRank: opponent?.profile?.rank_tier || "Rookie", myCard: state.my_card, rivalCard: state.opponent_card, hideRival: !state.opponent_card, message: !active ? "Connecting both players to the private referee…" : myTurn ? "Your move. Choose one official stat." : `Waiting for ${opponent?.profile?.username || "your rival"}…`, canAct: active && myTurn, selectedStat: latest?.selected_stat, remote: true, presence: Object.keys(backend.presence).length });
+  const roundWinner = latest?.winner_id === me?.player_id ? "player" : latest?.winner_id === opponent?.player_id ? "opponent" : latest ? "draw" : null;
+  return renderOnlineBattleLayout({ mode: state.match.mode, round: state.match.round_number, myScore: me?.score || 0, rivalScore: opponent?.score || 0, myName: backend.profile?.username || "PLAYER", rivalName: opponent?.profile?.username || "RIVAL", myRank: backend.profile?.rank_tier || "Rookie", rivalRank: opponent?.profile?.rank_tier || "Rookie", myCard: state.my_card, rivalCard: state.opponent_card, hideRival: !state.opponent_card, message: !active ? "Connecting both players to the private referee…" : myTurn ? "Your move. Choose one official stat." : `Waiting for ${opponent?.profile?.username || "your rival"}…`, canAct: active && myTurn, selectedStat: latest?.selected_stat, roundWinner, remote: true, presence: Object.keys(backend.presence).length });
 }
 
 function renderOnlineBattleLayout(data) {
-  const values = (card, key) => data.remote ? Number(card?.stats?.[key] || 0) : getStatValue(card, key);
-  const body = `<section class="pvx-live-battle"><header><div class="pvx-live-player"><span class="pvx-avatar">${escapeHtml(backend.profile?.avatar || "MP")}</span><div><b>${escapeHtml(data.myName)}</b><small>${escapeHtml(data.myRank)}</small></div></div><div class="pvx-live-score"><small>Best of 3 · Round ${data.round}</small><div><b>${data.myScore}</b><span>—</span><b>${data.rivalScore}</b></div><em>${escapeHtml(data.mode)}</em></div><div class="pvx-live-player rival"><div><b>${escapeHtml(data.rivalName)}</b><small>${escapeHtml(data.rivalRank)}</small></div><span class="pvx-avatar">RP</span></div></header><main><div class="pvx-arena-floor"></div>${renderOnlineBattleCard(data.myCard, "Your pup", false, data.remote)}<section class="pvx-live-referee"><span><i></i>${data.remote ? "Protected referee" : "Match referee"}</span><div><small>Round</small><b>${data.round}</b></div><p>${escapeHtml(data.message)}</p>${data.selectedStat ? `<strong>${titleCase(data.selectedStat)} official</strong>` : ""}</section>${renderOnlineBattleCard(data.rivalCard, data.rivalName, data.hideRival, data.remote)}</main><section class="pvx-live-dock"><div><small>${data.canAct ? "Your move" : "Match state"}</small><strong>${data.canAct ? "Choose one combat stat" : "Waiting securely"}</strong></div><div>${stats.map((stat) => `<button data-action="${data.remote ? "remote-stat" : "online-stat"}" data-stat="${stat.key}" ${data.canAct ? "" : "disabled"}><span>${stat.icon}</span><small>${stat.short}</small><strong>${values(data.myCard, stat.key)}</strong><em>${stat.label}</em></button>`).join("")}</div>${!data.remote && data.selectedStat && !data.complete ? `<button class="pvx-next" data-action="next-online">Next round →</button>` : `<span class="pvx-timer">◷ 20s</span>`}</section><footer><span>Safe reactions</span>${["Good luck!", "Great match!", "That was close!"].map((reaction) => `<button data-action="reaction" data-reaction="${reaction}">${reaction}</button>`).join("")}${data.remote ? `<button data-action="remote-report">Report</button><button data-action="remote-block">Block</button><em>${data.presence || 0}/2 connected</em>` : gameState.quickReaction ? `<em>${escapeHtml(gameState.quickReaction)}</em>` : ""}</footer></section>`;
+  const body = `<section class="pvx-live-battle"><header><div class="pvx-live-player"><span class="pvx-avatar">${escapeHtml(backend.profile?.avatar || "MP")}</span><div><b>${escapeHtml(data.myName)}</b><small>${escapeHtml(data.myRank)}</small></div></div><div class="pvx-live-score"><small>Best of 3 · Round ${data.round}</small><div><b>${data.myScore}</b><span>—</span><b>${data.rivalScore}</b></div><em>${escapeHtml(data.mode)}</em></div><div class="pvx-live-player rival"><div><b>${escapeHtml(data.rivalName)}</b><small>${escapeHtml(data.rivalRank)}</small></div><span class="pvx-avatar">RP</span></div></header><main><div class="pvx-arena-floor"></div>${renderOnlineBattleCard(data.myCard, "Your pup", false, data.remote, data.roundWinner === "player")}<section class="pvx-live-referee"><span><i></i>${data.remote ? "Protected referee" : "Match referee"}</span><div><small>Round</small><b>${data.round}</b></div><p>${escapeHtml(data.message)}</p>${data.selectedStat ? `<strong>${titleCase(data.selectedStat)} official</strong>` : ""}</section>${renderOnlineBattleCard(data.rivalCard, data.rivalName, data.hideRival, data.remote, data.roundWinner === "opponent")}</main><section class="pvx-live-dock"><div><small>${data.canAct ? "Your move" : "Match state"}</small><strong>${data.canAct ? "Choose one combat stat" : "Waiting securely"}</strong></div><div>${stats.map((stat) => `<button class="${getAbilityBoost(data.myCard, stat.key) ? "has-boost" : ""}" data-action="${data.remote ? "remote-stat" : "online-stat"}" data-stat="${stat.key}" ${data.canAct ? "" : "disabled"}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(data.myCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${!data.remote && data.selectedStat && !data.complete ? `<button class="pvx-next" data-action="next-online">Next round →</button>` : `<span class="pvx-timer">◷ 20s</span>`}</section><footer><span>Safe reactions</span>${["Good luck!", "Great match!", "That was close!"].map((reaction) => `<button data-action="reaction" data-reaction="${reaction}">${reaction}</button>`).join("")}${data.remote ? `<button data-action="remote-report">Report</button><button data-action="remote-block">Block</button><em>${data.presence || 0}/2 connected</em>` : gameState.quickReaction ? `<em>${escapeHtml(gameState.quickReaction)}</em>` : ""}</footer></section>`;
   return renderShell(body, "online");
 }
 
