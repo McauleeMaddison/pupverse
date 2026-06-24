@@ -144,28 +144,93 @@ function renderShell(content, active = gameState.mode) {
   const avatar = escapeHtml(backend.profile?.avatar || "MP");
   const username = escapeHtml(backend.profile?.username || "MADDYPUP");
   const isGuest = Boolean(backend.session?.user?.is_anonymous);
+  const hasSession = Boolean(backend.session?.user);
+
   return `
     <section class="pvx-shell">
       <header class="pvx-topbar">
         ${renderBrand()}
+
         <nav class="pvx-nav" aria-label="Primary navigation">
-          <button class="${active === "home" ? "active" : ""}" data-action="go-home"><span>⌂</span><b>Home</b></button>
-          <button class="${active === "collection" ? "active" : ""}" data-action="go-vault"><span>◇</span><b>Vault</b></button>
-          <button class="${active === "shop" ? "active" : ""}" data-action="go-shop"><span>✦</span><b>Packs</b></button>
-          <button class="${active === "battle" ? "active" : ""}" data-action="go-battle"><span>⚔</span><b>Solo</b></button>
-          <button class="${active === "online" ? "active" : ""}" data-action="go-online"><span>◉</span><b>Online</b></button>
+          <button class="${active === "home" ? "active" : ""}" data-action="go-home">
+            <span>⌂</span><b>Home</b>
+          </button>
+
+          <button class="${active === "collection" ? "active" : ""}" data-action="go-vault">
+            <span>◇</span><b>Vault</b>
+          </button>
+
+          <button class="${active === "shop" ? "active" : ""}" data-action="go-shop">
+            <span>✦</span><b>Packs</b>
+          </button>
+
+          <button class="${active === "battle" ? "active" : ""}" data-action="go-battle">
+            <span>⚔</span><b>Solo</b>
+          </button>
+
+          <button class="${active === "online" ? "active" : ""}" data-action="go-online">
+            <span>◉</span><b>Online</b>
+          </button>
         </nav>
-        <div class="pvx-account"><span class="pvx-coins">◈ <b>${coins}</b></span><span class="pvx-avatar">${avatar}</span><span class="pvx-user"><b>${username}</b><small>Level ${backend.profile?.level ?? gameState.level}</small></span>${isGuest ? `<button class="pvx-signout" data-action="upgrade-guest">Secure account</button>` : backend.session ? `<button class="pvx-signout" data-action="backend-signout">Sign out</button>` : ""}</div>
+
+        <div class="pvx-account">
+          <span class="pvx-coins">◈ <b>${coins}</b></span>
+          <span class="pvx-avatar">${avatar}</span>
+
+          <span class="pvx-user">
+            <b>${username}</b>
+            <small>Level ${backend.profile?.level ?? gameState.level}</small>
+          </span>
+
+          ${
+            isGuest
+              ? `
+                <button class="pvx-signout" data-action="upgrade-guest">
+                  Secure account
+                </button>
+
+                <button class="pvx-signout" data-action="backend-signout">
+                  Sign out
+                </button>
+              `
+              : hasSession
+                ? `
+                  <button class="pvx-signout" data-action="backend-signout">
+                    Sign out
+                  </button>
+                `
+                : ""
+          }
+        </div>
       </header>
-      <main class="pvx-main">${content}</main>
+
+      <main class="pvx-main">
+        ${content}
+      </main>
+
       <nav class="pvx-mobile-nav" aria-label="Mobile navigation">
-        <button class="${active === "home" ? "active" : ""}" data-action="go-home"><span>⌂</span><b>Home</b></button>
-        <button class="${active === "collection" ? "active" : ""}" data-action="go-vault"><span>◇</span><b>Vault</b></button>
-        <button class="${active === "shop" ? "active" : ""}" data-action="go-shop"><span>✦</span><b>Packs</b></button>
-        <button class="${active === "battle" ? "active" : ""}" data-action="go-battle"><span>⚔</span><b>Solo</b></button>
-        <button class="${active === "online" ? "active" : ""}" data-action="go-online"><span>◉</span><b>Online</b></button>
+        <button class="${active === "home" ? "active" : ""}" data-action="go-home">
+          <span>⌂</span><b>Home</b>
+        </button>
+
+        <button class="${active === "collection" ? "active" : ""}" data-action="go-vault">
+          <span>◇</span><b>Vault</b>
+        </button>
+
+        <button class="${active === "shop" ? "active" : ""}" data-action="go-shop">
+          <span>✦</span><b>Packs</b>
+        </button>
+
+        <button class="${active === "battle" ? "active" : ""}" data-action="go-battle">
+          <span>⚔</span><b>Solo</b>
+        </button>
+
+        <button class="${active === "online" ? "active" : ""}" data-action="go-online">
+          <span>◉</span><b>Online</b>
+        </button>
       </nav>
-</section>`;
+    </section>
+  `;
 }
 
 function getShowcaseCards() {
