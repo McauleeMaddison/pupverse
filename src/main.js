@@ -122,12 +122,12 @@ async function handleSession(session) {
 
 async function bootstrapBackend() {
   if (!backend.configured) return;
+
   try {
-    let { session } = await initializeArenaBackend(handleSession);
-    if (!session) {
-      const guest = await signInAsGuest();
-      session = guest.session;
-    }
+    const { session } = await initializeArenaBackend(handleSession);
+
+    // Do not automatically create an anonymous account.
+    // Public players must deliberately create or sign into an account.
     await handleSession(session);
   } catch (error) {
     backend.error = error.message;
