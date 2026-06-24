@@ -1,4 +1,5 @@
 import "./style.css";
+import { CARD_STATS, SHOWCASE_CARD_IDS } from "./app/constants.js";
 import { cards } from "./data/cards.js";
 import { packs } from "./data/packs.js";
 import {
@@ -29,6 +30,8 @@ import {
   useLocalProgress,
 } from "./game/state.js";
 import { startAnimatedBackground } from "./ui/animatedBackground.js";
+import { renderCardImage, setupImageFallbacks } from "./ui/cardImages.js";
+import { escapeHtml, titleCase } from "./utils/format.js";
 import {
   initializeArenaBackend,
   signInAsGuest,
@@ -59,13 +62,7 @@ import {
 const app = document.querySelector("#app");
 if (!app) throw new Error("PupVerse could not find the #app element.");
 
-const stats = [
-  { key: "power", label: "Power", short: "POW", icon: "◆" },
-  { key: "speed", label: "Speed", short: "SPD", icon: "ϟ" },
-  { key: "intelligence", label: "Intelligence", short: "INT", icon: "✦" },
-  { key: "defence", label: "Defence", short: "DEF", icon: "⬡" },
-  { key: "luck", label: "Luck", short: "LCK", icon: "✧" },
-];
+const stats = CARD_STATS;
 
 let selectedVaultCardId = null;
 let vaultCardFlipped = false;
@@ -89,50 +86,6 @@ const backend = {
   message: "",
   error: "",
 };
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>'"]/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "'": "&#39;",
-    '"': "&quot;",
-  })[character]);
-}
-
-function titleCase(value) {
-  if (!value) return "Stat";
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function getImageFallbacks(path) {
-  if (!path) return [];
-  const clean = path.startsWith("/") ? path : `/${path}`;
-  const base = clean.replace(/\.(png|jpe?g|webp)$/i, "");
-  return [clean, `${base}.png`, `${base}.jpg`, `${base}.jpeg`, `${base}.webp`]
-    .filter((item, index, all) => all.indexOf(item) === index);
-}
-
-function renderCardImage(card, className = "") {
-  const fallbacks = getImageFallbacks(card?.frontImage || card?.front_image);
-  return `<img class="${className}" src="${fallbacks[0] || ""}" alt="${escapeHtml(card?.name || "PupVerse card")}" data-fallbacks='${JSON.stringify(fallbacks)}' data-fallback-index="0">`;
-}
-
-function setupImageFallbacks() {
-  document.querySelectorAll("img[data-fallbacks]").forEach((image) => {
-    image.onerror = () => {
-      const fallbacks = JSON.parse(image.dataset.fallbacks || "[]");
-      const next = Number(image.dataset.fallbackIndex || 0) + 1;
-      if (fallbacks[next]) {
-        image.dataset.fallbackIndex = String(next);
-        image.src = fallbacks[next];
-        return;
-      }
-      image.onerror = null;
-      image.src = "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#0d1534"/><stop offset=".5" stop-color="#32145d"/><stop offset="1" stop-color="#061c2a"/></linearGradient></defs><rect width="600" height="800" rx="40" fill="url(#g)"/><rect x="24" y="24" width="552" height="752" rx="32" fill="none" stroke="#5df4e7" stroke-width="4"/><text x="300" y="390" fill="white" text-anchor="middle" font-size="50" font-family="Arial" font-weight="900">PUPVERSE</text><text x="300" y="450" fill="#75eee3" text-anchor="middle" font-size="24" font-family="Arial">${escapeHtml(image.alt)}</text></svg>`);
-    };
-  });
-}
 
 function activeDeck() {
   return backend.decks.find((deck) => deck.active) || backend.decks[0] || null;
@@ -215,7 +168,7 @@ function renderShell(content, active = gameState.mode) {
 }
 
 function getShowcaseCards() {
-  return ["crypto-raven", "cyber-kimiko", "alien-prism-fang"]
+  return SHOWCASE_CARD_IDS
     .map((id) => cards.find((card) => card.id === id)).filter(Boolean);
 }
 

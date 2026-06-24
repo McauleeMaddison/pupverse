@@ -1,5 +1,6 @@
 let animationFrameId = null;
 let resizeHandler = null;
+let motionHandler = null;
 
 export function startAnimatedBackground() {
   const canvas = document.querySelector("#spaceCanvas");
@@ -14,44 +15,92 @@ export function startAnimatedBackground() {
     window.removeEventListener("resize", resizeHandler);
   }
 
+  if (motionHandler) {
+    window.matchMedia("(prefers-reduced-motion: reduce)").removeEventListener("change", motionHandler);
+  }
+
   const ctx = canvas.getContext("2d");
+  const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const reducedMotion = motionQuery.matches;
+  const particleCount = reducedMotion ? 42 : 118;
+  let width = window.innerWidth;
+  let height = window.innerHeight;
+  let lastFrame = performance.now();
 
   function resizeCanvas() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   resizeCanvas();
 
-  const particles = Array.from({ length: 90 }, () => ({
-    x: Math.random() * canvas.width,
-    y: Math.random() * canvas.height,
-    radius: Math.random() * 2 + 0.5,
-    speed: Math.random() * 0.7 + 0.2,
-  }));
+  function createParticle(y = Math.random() * height) {
+    const depth = Math.random();
 
-  function animate() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return {
+      x: Math.random() * width,
+      y,
+      depth,
+      radius: 0.55 + depth * 1.9,
+      drift: (Math.random() - 0.5) * (0.12 + depth * 0.2),
+      speed: 0.16 + depth * 0.56,
+      hue: Math.random() > 0.66 ? 318 : Math.random() > 0.42 ? 184 : 216,
+      twinkle: Math.random() * Math.PI * 2,
+    };
+  }
+
+  const particles = Array.from({ length: particleCount }, () => createParticle());
+
+  function drawNebula() {
+    const glow = ctx.createRadialGradient(width * 0.72, height * 0.18, 0, width * 0.72, height * 0.18, width * 0.55);
+    glow.addColorStop(0, "rgba(103, 244, 231, 0.09)");
+    glow.addColorStop(0.46, "rgba(156, 114, 255, 0.045)");
+    glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, height);
+  }
+
+  function animate(now = performance.now()) {
+    const delta = Math.min(32, now - lastFrame) / 16.67;
+    lastFrame = now;
+
+    ctx.clearRect(0, 0, width, height);
+    drawNebula();
+    ctx.globalCompositeOperation = "lighter";
 
     particles.forEach((particle) => {
+      const twinkle = 0.42 + Math.sin(now * 0.0018 + particle.twinkle) * 0.26 + particle.depth * 0.28;
+
       ctx.beginPath();
       ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.fillStyle = `hsla(${particle.hue}, 100%, ${78 + particle.depth * 12}%, ${twinkle})`;
       ctx.fill();
 
-      particle.y += particle.speed;
+      if (!reducedMotion) {
+        particle.y += particle.speed * delta;
+        particle.x += particle.drift * delta;
+      }
 
-      if (particle.y > canvas.height) {
-        particle.y = 0;
-        particle.x = Math.random() * canvas.width;
+      if (particle.y > height + 8 || particle.x < -8 || particle.x > width + 8) {
+        Object.assign(particle, createParticle(-8));
       }
     });
 
-    animationFrameId = requestAnimationFrame(animate);
+    ctx.globalCompositeOperation = "source-over";
+
+    if (!reducedMotion) {
+      animationFrameId = requestAnimationFrame(animate);
+    }
   }
 
   resizeHandler = resizeCanvas;
+  motionHandler = () => startAnimatedBackground();
   window.addEventListener("resize", resizeHandler);
+  motionQuery.addEventListener("change", motionHandler);
 
   animate();
 }

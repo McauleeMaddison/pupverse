@@ -1,6 +1,7 @@
 {
   "name": "pupverse",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "A collectible card arena for opening packs, building a vault, and battling cosmic pups.",
   "private": true,
   "type": "module",
   "scripts": {
