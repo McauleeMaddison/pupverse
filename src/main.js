@@ -10,6 +10,7 @@ import {
   startPackOpening,
   finishPackOpening,
   getFilteredCollectionCards,
+  getCollectionWithCounts,
   getCollectionProgress,
   setCollectionFilter,
   addDevCoins,
@@ -64,6 +65,39 @@ const app = document.querySelector("#app");
 if (!app) throw new Error("PupVerse could not find the #app element.");
 
 const stats = CARD_STATS;
+const HOME_SECTORS = {
+  CryptoPups: {
+    icon: "◌",
+    title: "Crypto Coast",
+    copy: "Beach-born duelists built for speed bursts and stylish finishers.",
+  },
+  CyberPups: {
+    icon: "△",
+    title: "Cyber Grid",
+    copy: "Armored tacticians who grind out rounds with precision and defence.",
+  },
+  AlienPups: {
+    icon: "✦",
+    title: "Bloom Nebula",
+    copy: "High-rarity cosmic beasts that spike fights with volatile late-round power.",
+  },
+};
+const RARITY_WEIGHTS = {
+  common: 1,
+  uncommon: 2,
+  rare: 3,
+  epic: 4,
+  legendary: 5,
+  mythic: 6,
+  mystic: 7,
+};
+const PLAYSTYLE_COPY = {
+  power: "frontline burst pressure",
+  speed: "tempo control and fast turns",
+  intelligence: "mind-game reads and counterplay",
+  defence: "anchor defence and attrition",
+  luck: "high-variance steal potential",
+};
 
 let selectedVaultCardId = null;
 let vaultCardFlipped = false;
@@ -252,10 +286,192 @@ function getPrestigeWinClass(card, won) {
   return `prestige-winner rarity-${String(card.rarity || "").toLowerCase()}`;
 }
 
-function renderHome() {
+function clampPercent(value) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function getMilestone(value, step, minimum = step) {
+  return Math.max(minimum, Math.ceil((Math.max(0, value) + 1) / step) * step);
+}
+
+function getCardPowerScore(card) {
+  return stats.reduce((total, stat) => total + getEffectiveStatValue(card, stat.key), 0);
+}
+
+function getRarityWeight(card) {
+  return RARITY_WEIGHTS[String(card?.rarity || "").toLowerCase()] || 0;
+}
+
+function getDominantStat(cardList) {
+  return (
+    stats
+      .map((stat) => ({
+        ...stat,
+        value: cardList.length
+          ? Math.round(
+              cardList.reduce(
+                (total, card) => total + getEffectiveStatValue(card, stat.key),
+                0
+              ) / cardList.length
+            )
+          : 0,
+      }))
+      .sort((left, right) => right.value - left.value)[0] || {
+      ...stats[0],
+      value: 0,
+    }
+  );
+}
+
+function getPackCompletionData(ownedCards) {
+  return packs.map((pack) => {
+    const packCards = cards.filter((card) => card.pack === pack.cardPackName);
+    const ownedInPack = ownedCards.filter((card) => card.pack === pack.cardPackName);
+    const dominant = getDominantStat(ownedInPack);
+    const completion = clampPercent((ownedInPack.length / Math.max(1, packCards.length)) * 100);
+    const flagship =
+      [...ownedInPack].sort((left, right) => getCardPowerScore(right) - getCardPowerScore(left))[0] ||
+      packCards[0] ||
+      null;
+    const meta = HOME_SECTORS[pack.cardPackName] || {
+      icon: "◇",
+      title: pack.cardPackName,
+      copy: pack.description,
+    };
+
+    return {
+      ...meta,
+      pack,
+      completion,
+      ownedUnique: ownedInPack.length,
+      totalCards: packCards.length,
+      duplicates: ownedInPack.reduce((total, card) => total + Math.max(0, card.count - 1), 0),
+      dominant,
+      flagship,
+      pressure: clampPercent(completion * 0.55 + dominant.value * 0.45),
+    };
+  });
+}
+
+function getHomeCommandData() {
+  const ownedCards = getCollectionWithCounts();
   const progress = getCollectionProgress();
-  const showcase = getShowcaseCards();
   const rating = backend.profile?.rank_rating ?? gameState.rankRating;
+  const sectors = getPackCompletionData(ownedCards);
+  const rosterLead =
+    [...ownedCards].sort((left, right) => getCardPowerScore(right) - getCardPowerScore(left))[0] ||
+    getShowcaseCards()[0] ||
+    cards[0] ||
+    null;
+  const rarestCard =
+    [...ownedCards].sort((left, right) =>
+      getRarityWeight(right) - getRarityWeight(left) ||
+      getCardPowerScore(right) - getCardPowerScore(left)
+    )[0] || rosterLead;
+  const rosterStat = getDominantStat(ownedCards);
+  const recommendedPack = [...sectors].sort((left, right) =>
+    (right.totalCards - right.ownedUnique) - (left.totalCards - left.ownedUnique) ||
+    left.completion - right.completion ||
+    left.pack.cost - right.pack.cost
+  )[0] || sectors[0];
+  const battleTarget = getMilestone(gameState.totalBattles, 5);
+  const winTarget = getMilestone(backend.profile?.online_wins ?? gameState.onlineWins, 10, 10);
+  const nextRankTarget = getNextRankTarget(rating);
+
+  return {
+    progress,
+    rating,
+    ownedCards,
+    sectors,
+    rosterLead,
+    rarestCard,
+    rosterStat,
+    recommendedPack,
+    prestigeCount: ownedCards.filter((card) => isPrestigeRarity(card)).length,
+    journey: [
+      {
+        label: "Vault ascension",
+        percent: progress.percentage,
+        progressLabel: `${progress.uniqueOwned}/${progress.totalCards}`,
+        reward: `${Math.max(0, progress.totalCards - progress.uniqueOwned)} pups still hidden`,
+      },
+      {
+        label: "Battle rhythm",
+        percent: clampPercent((gameState.totalBattles / battleTarget) * 100),
+        progressLabel: `${gameState.totalBattles}/${battleTarget}`,
+        reward: `${Math.max(0, battleTarget - gameState.totalBattles)} rounds to next sync`,
+      },
+      {
+        label: "League climb",
+        percent: getRankProgress(rating),
+        progressLabel: `${rating}/${nextRankTarget}`,
+        reward: `${Math.max(0, nextRankTarget - rating)} RP to promotion`,
+      },
+      {
+        label: "Arena momentum",
+        percent: clampPercent(((backend.profile?.online_wins ?? gameState.onlineWins) / winTarget) * 100),
+        progressLabel: `${backend.profile?.online_wins ?? gameState.onlineWins}/${winTarget}`,
+        reward: `${Math.max(0, winTarget - (backend.profile?.online_wins ?? gameState.onlineWins))} wins to milestone`,
+      },
+    ],
+    liveOps: [
+      sectors[0]
+        ? {
+            window: "Sector pulse",
+            title: sectors[0].title,
+            copy: `${sectors[0].completion}% charted · ${sectors[0].dominant.label} dominance`,
+          }
+        : {
+            window: "Sector pulse",
+            title: "First contact",
+            copy: "Open your first pack to reveal which faction leads your run.",
+          },
+      rosterLead
+        ? {
+            window: "Prime unit",
+            title: rosterLead.name,
+            copy: `${rosterLead.rarity} ${rosterLead.element} with ${getCardPowerScore(rosterLead)} total combat output`,
+          }
+        : {
+            window: "Prime unit",
+            title: "No champion selected",
+            copy: "Your first rare pull will become the face of the roster.",
+          },
+      recommendedPack
+        ? {
+            window: "Next breach",
+            title: recommendedPack.pack.name,
+            copy: `${Math.max(0, recommendedPack.totalCards - recommendedPack.ownedUnique)} undiscovered pups · cost ${recommendedPack.pack.cost}`,
+          }
+        : {
+            window: "Next breach",
+            title: "CryptoPups Pack",
+            copy: "Start by unlocking a balanced core squad for solo and online play.",
+          },
+    ],
+  };
+}
+
+function renderJourneyTrack(track) {
+  return `<article class="pvx-journey-track"><div><small>${escapeHtml(track.label)}</small><strong>${escapeHtml(track.progressLabel)}</strong></div><div class="pvx-progress"><i style="width:${track.percent}%"></i></div><p>${escapeHtml(track.reward)}</p></article>`;
+}
+
+function renderSectorReport(sector) {
+  return `<article class="pvx-sector-row"><div class="pvx-sector-head"><span>${sector.icon}</span><div><small>${escapeHtml(sector.title)}</small><strong>${sector.ownedUnique}/${sector.totalCards}</strong></div></div><div class="pvx-sector-metrics"><b>${sector.completion}% scanned</b><i>${escapeHtml(sector.dominant.short)} ${sector.dominant.value}</i></div><div class="pvx-progress sector-progress"><i style="width:${sector.pressure}%"></i></div><p>${escapeHtml(sector.copy)}</p></article>`;
+}
+
+function renderHome() {
+  const showcase = getShowcaseCards();
+  const command = getHomeCommandData();
+  const rating = command.rating;
+  const level = backend.profile?.level ?? gameState.level;
+  const onlineWins = backend.profile?.online_wins ?? gameState.onlineWins;
+  const missionWins = Math.min(2, gameState.playerWins);
+  const missionComplete = missionWins >= 2;
+  const recommendedPack = command.recommendedPack?.pack || packs[0];
+  const canAffordRecommended = (backend.profile?.coins ?? gameState.coins) >= (recommendedPack?.cost || 0);
+  const levelProgress = clampPercent((((level - 1) % 10) + 1) * 10);
+  const winProgress = clampPercent(((onlineWins % 10) / 10) * 100 || (onlineWins ? 100 : 0));
   return renderShell(`
     <section class="pvx-home">
       <div class="pvx-home-aurora"></div><div class="pvx-home-orbit orbit-a"></div><div class="pvx-home-orbit orbit-b"></div>
@@ -264,7 +480,7 @@ function renderHome() {
         <h1><span>PUP</span><em>VERSE</em></h1>
         <p class="pvx-hero-text">Collect cosmic pups. Build an unbeatable deck. Enter a living neon arena where every card has a story—and every stat can change the fight.</p>
         <div class="pvx-hero-actions"><button class="pvx-primary" data-action="go-online"><span>Play Online</span><b>Enter Arena League</b><i>→</i></button><button class="pvx-secondary" data-action="go-battle"><span>⚔</span><b>Solo Battle</b></button></div>
-        <div class="pvx-micro-stats"><article><small>Player level</small><strong>${backend.profile?.level ?? gameState.level}</strong><i style="--value:72%"></i></article><article><small>Arena wins</small><strong>${backend.profile?.online_wins ?? gameState.onlineWins}</strong><i style="--value:54%"></i></article><article><small>League rating</small><strong>${rating}</strong><i style="--value:${getRankProgress(rating)}%"></i></article></div>
+        <div class="pvx-micro-stats"><article><small>Player level</small><strong>${level}</strong><i style="--value:${levelProgress}%"></i></article><article><small>Arena wins</small><strong>${onlineWins}</strong><i style="--value:${winProgress}%"></i></article><article><small>League rating</small><strong>${rating}</strong><i style="--value:${getRankProgress(rating)}%"></i></article></div>
       </div>
       <div class="pvx-hero-cards" aria-label="Featured PupVerse cards">
         <div class="pvx-card-rings"></div><div class="pvx-card-platform"></div>
@@ -272,9 +488,39 @@ function renderHome() {
         <span class="pvx-float-rune rune-a">✦</span><span class="pvx-float-rune rune-b">◇</span><span class="pvx-float-rune rune-c">+</span>
       </div>
       <section class="pvx-home-bottom">
-        <article class="pvx-progress-card"><div class="pvx-panel-icon">◇</div><div><small>Collection vault</small><h2>${progress.uniqueOwned} <span>/ ${progress.totalCards} discovered</span></h2><div class="pvx-progress"><i style="width:${progress.percentage}%"></i></div><p><b>${progress.percentage}% complete</b><span>${progress.duplicateCount} duplicates</span></p></div><button data-action="go-vault">Explore vault →</button></article>
-        <article class="pvx-daily-card"><span class="pvx-live"><i></i> Daily mission</span><h2>Win two arena rounds</h2><p>Take any deck into battle and prove your strongest stats.</p><div><span>1 / 2</span><b>+150 XP</b></div><button data-action="go-battle">Continue mission</button></article>
+        <article class="pvx-progress-card"><div class="pvx-panel-icon">◇</div><div><small>Collection vault</small><h2>${command.progress.uniqueOwned} <span>/ ${command.progress.totalCards} discovered</span></h2><div class="pvx-progress"><i style="width:${command.progress.percentage}%"></i></div><p><b>${command.progress.percentage}% complete</b><span>${command.progress.duplicateCount} duplicates</span></p></div><button data-action="go-vault">Explore vault →</button></article>
+        <article class="pvx-daily-card"><span class="pvx-live"><i></i> Daily mission</span><h2>${missionComplete ? "Mission complete" : "Win two arena rounds"}</h2><p>${missionComplete ? "Your combat rhythm is locked in. Push into ranked or scout a new pack." : "Take any deck into battle and prove your strongest stats."}</p><div><span>${missionWins} / 2</span><b>${missionComplete ? "+150 XP secured" : "+150 XP"}</b></div><button data-action="${missionComplete ? "go-online" : "go-battle"}">${missionComplete ? "Enter ranked" : "Continue mission"}</button></article>
         <article class="pvx-rank-card"><div class="pvx-rank-gem"><span>◆</span></div><div><small>Current league</small><h2>${getRankTier(rating)}</h2><p>${rating} RP · ${Math.max(0, getNextRankTarget(rating) - rating)} to promotion</p></div><button data-action="go-online">Ranked queue</button></article>
+      </section>
+      <section class="pvx-command-grid">
+        <article class="pvx-command-card pvx-command-journey">
+          <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Starpath progress</p><h2>COMMAND JOURNEY</h2></div><span>${command.prestigeCount} prestige</span></div>
+          <div class="pvx-journey-grid">${command.journey.map(renderJourneyTrack).join("")}</div>
+          <div class="pvx-command-actions"><button data-action="go-vault">Inspect vault</button><button data-action="go-online">Push rank</button></div>
+        </article>
+        <article class="pvx-command-card pvx-command-sectors">
+          <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Faction pressure</p><h2>SECTOR RADAR</h2></div><span>${command.sectors.length} zones</span></div>
+          <div class="pvx-sector-list">${command.sectors.map(renderSectorReport).join("")}</div>
+          <div class="pvx-command-footer"><strong>${escapeHtml(command.rosterStat.label)}</strong><p>Your collection currently leans toward ${escapeHtml(PLAYSTYLE_COPY[command.rosterStat.key] || "adaptive play")}.</p></div>
+        </article>
+        <article class="pvx-command-card pvx-command-intel">
+          <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Squad intelligence</p><h2>ROSTER CORE</h2></div><span>${command.ownedCards.length} unique</span></div>
+          <div class="pvx-intel-focus">
+            ${command.rosterLead ? `<button class="pvx-intel-card" data-action="preview-card" data-card-id="${command.rosterLead.id}">${renderCardImage(command.rosterLead)}<span><small>Prime unit</small><b>${escapeHtml(command.rosterLead.name)}</b><em>${escapeHtml(command.rosterLead.rarity)} · ${escapeHtml(command.rosterLead.element)}</em></span></button>` : `<div class="pvx-empty"><span>◇</span><h3>No prime unit yet</h3><p>Open a pack to start building your mobile battle roster.</p></div>`}
+            <div class="pvx-intel-copy">
+              <article><small>Lead playstyle</small><strong>${escapeHtml(titleCase(command.rosterStat.label))}</strong><p>${escapeHtml(PLAYSTYLE_COPY[command.rosterStat.key] || "Balanced combat pressure")}.</p></article>
+              <article><small>Rarest owned</small><strong>${escapeHtml(command.rarestCard?.name || "None")}</strong><p>${escapeHtml(command.rarestCard ? `${command.rarestCard.rarity} ${command.rarestCard.element}` : "Your first rare pull will surface here.")}</p></article>
+              <article><small>Suggested breach</small><strong>${escapeHtml(recommendedPack?.name || "CryptoPups Pack")}</strong><p>${escapeHtml(command.liveOps[2]?.copy || "Open the recommended pack to widen your options.")}</p></article>
+            </div>
+          </div>
+          <div class="pvx-command-actions"><button data-action="go-battle">Run solo drill</button><button data-action="open-pack" data-pack-id="${recommendedPack?.id || "crypto"}" ${canAffordRecommended ? "" : "disabled"}>${canAffordRecommended ? "Open target pack" : `Need ${Math.max(0, (recommendedPack?.cost || 0) - (backend.profile?.coins ?? gameState.coins))} more coins`}</button></div>
+        </article>
+        <article class="pvx-command-card pvx-command-live">
+          <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Live operations</p><h2>OPS BOARD</h2></div><span>Mobile-ready</span></div>
+          <div class="pvx-ops-list">${command.liveOps.map((entry) => `<article><small>${escapeHtml(entry.window)}</small><strong>${escapeHtml(entry.title)}</strong><p>${escapeHtml(entry.copy)}</p></article>`).join("")}</div>
+          <div class="pvx-command-footer"><strong>Quick route</strong><p>Use solo battles to tune your stat instincts, then jump into protected online matches once your vault starts to diversify.</p></div>
+          <div class="pvx-command-actions"><button data-action="go-shop">Open pack shop</button><button data-action="go-online">Enter arena</button></div>
+        </article>
       </section>
     </section>`, "home");
 }

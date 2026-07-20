@@ -1,0 +1,19 @@
+{
+  "name": "PupVerse",
+  "short_name": "PupVerse",
+  "description": "Collect cosmic pups, build your vault, and battle through the neon arena.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#030612",
+  "theme_color": "#050713",
+  "orientation": "portrait",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
