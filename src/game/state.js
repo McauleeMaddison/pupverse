@@ -107,6 +107,44 @@ const DAILY_TASK_POOL = [
     description: "Build out fusion material by pulling two duplicates.",
   },
 ];
+const STARTER_DAILY_TASKS = [
+  {
+    id: "starter-play-1",
+    group: "soloBattles",
+    metric: "totalBattles",
+    goal: 1,
+    icon: "◷",
+    title: "Play 1 tutorial round",
+    description: "Step into the arena once to start your first run.",
+  },
+  {
+    id: "starter-win-1",
+    group: "soloWins",
+    metric: "playerWins",
+    goal: 1,
+    icon: "⚔",
+    title: "Win 1 tutorial round",
+    description: "Take your first clean victory in the starter arena.",
+  },
+  {
+    id: "starter-pack-1",
+    group: "packsOpened",
+    metric: "totalPacksOpened",
+    goal: 1,
+    icon: "✦",
+    title: "Open 1 starter pack",
+    description: "Crack your first pack and send the pulls into the vault.",
+  },
+  {
+    id: "starter-discover-1",
+    group: "collection",
+    metric: "uniqueOwned",
+    goal: 1,
+    icon: "◇",
+    title: "Discover 1 new pup",
+    description: "Reveal one new card to complete your first mission board.",
+  },
+];
 let progressSource = "local";
 
 function createDefaultSave() {
@@ -183,7 +221,20 @@ function getRewardWeight(card) {
   }
 }
 
-function pickDailyTasks(cycleKey) {
+function shouldUseStarterDailyTasks(metrics = getMissionMetrics()) {
+  return (
+    Number(metrics.playerWins || 0) === 0 &&
+    Number(metrics.totalBattles || 0) === 0 &&
+    Number(metrics.totalPacksOpened || 0) === 0 &&
+    Number(metrics.collectionCount || 0) === 0
+  );
+}
+
+function pickDailyTasks(cycleKey, metrics = getMissionMetrics()) {
+  if (shouldUseStarterDailyTasks(metrics)) {
+    return STARTER_DAILY_TASKS.map((task) => ({ ...task }));
+  }
+
   const random = createSeededRandom(`${cycleKey}:tasks`);
 
   return DAILY_TASK_GROUPS.map((group) => {
@@ -227,14 +278,17 @@ function getMissionMetrics() {
 
 function createDailyOpsState(now = Date.now()) {
   const cycleKey = getCurrentDailyCycleKey(now);
+  const baseline = getMissionMetrics();
+  const rookieBoard = shouldUseStarterDailyTasks(baseline);
 
   return {
     cycleKey,
     createdAt: new Date(now).toISOString(),
     refreshAt: now + DAY_MS,
-    baseline: getMissionMetrics(),
-    tasks: pickDailyTasks(cycleKey),
+    baseline,
+    tasks: pickDailyTasks(cycleKey, baseline),
     rewardCardId: pickDailyRewardCardId(cycleKey),
+    rookieBoard,
     rewardClaimed: false,
     claimedAt: null,
   };
@@ -256,8 +310,17 @@ function ensureDailyOpsState(force = false) {
   const now = Date.now();
   const activeBoard = gameState.dailyOps;
   const hasExpiredBoard = hasValidDailyOps(activeBoard) && Number(activeBoard.refreshAt) <= now;
+  const shouldRefreshForStarterBoard =
+    shouldUseStarterDailyTasks() &&
+    hasValidDailyOps(activeBoard) &&
+    !Boolean(activeBoard.rookieBoard);
 
-  if (force || !hasValidDailyOps(activeBoard) || hasExpiredBoard) {
+  if (
+    force ||
+    !hasValidDailyOps(activeBoard) ||
+    hasExpiredBoard ||
+    shouldRefreshForStarterBoard
+  ) {
     gameState.dailyOps = createDailyOpsState(now);
     saveGame();
   }

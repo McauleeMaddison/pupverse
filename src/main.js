@@ -181,6 +181,144 @@ function toggleHomePanel(panelKey) {
   renderApp();
 }
 
+function ensureHomePanelOpen(panelKey) {
+  if (!HOME_PANEL_KEYS.includes(panelKey) || isHomePanelOpen(panelKey)) return;
+  homePanels[panelKey] = true;
+  persistHomePanels();
+}
+
+function getCoinBalance() {
+  return backend.profile?.coins ?? gameState.coins;
+}
+
+function hasTutorialWin() {
+  return (Number(gameState.playerWins) || 0) > 0;
+}
+
+function hasOpenedFirstPack() {
+  return (Number(gameState.totalPacksOpened) || 0) > 0;
+}
+
+function hasCompletedFirstMission(dailyBoard) {
+  return Number(dailyBoard?.completedCount || 0) > 0;
+}
+
+function hasClaimedFirstReward(dailyBoard) {
+  return Boolean(dailyBoard?.rewardClaimed);
+}
+
+function canStartGuestRun() {
+  return backend.configured && !backend.session;
+}
+
+function getPrimaryPlayConfig() {
+  if (!hasTutorialWin()) {
+    return {
+      action: "go-battle",
+      tag: "Tutorial",
+      title: "Win your first round",
+      copy: "Learn the stat battle in under a minute.",
+    };
+  }
+
+  if (backend.session?.user) {
+    return {
+      action: "go-online",
+      tag: "Live arena",
+      title: "Queue a real match",
+      copy: "Take your synced squad into protected PvP.",
+    };
+  }
+
+  return {
+    action: "go-battle",
+    tag: "Solo arena",
+    title: "Run a quick rematch",
+    copy: "Short battles keep the collection loop moving.",
+  };
+}
+
+function getRookieSteps(dailyBoard) {
+  const starterPack = packs[0];
+
+  return [
+    {
+      id: "guest",
+      label: "Guest start",
+      description: "Save this run instantly, then secure the account later.",
+      complete: !canStartGuestRun(),
+      action: "start-guest",
+      hidden: !backend.configured,
+    },
+    {
+      id: "tutorial",
+      label: "Tutorial win",
+      description: "Beat one solo round to learn the stat battle loop.",
+      complete: hasTutorialWin(),
+      action: "go-battle",
+    },
+    {
+      id: "pack",
+      label: "First pack",
+      description: "Open one starter pack and send the pulls into your vault.",
+      complete: hasOpenedFirstPack(),
+      action: "open-pack",
+      packId: starterPack?.id || "crypto",
+    },
+    {
+      id: "mission",
+      label: "First mission",
+      description: "Progress the daily board so the first live reward unlocks fast.",
+      complete: hasCompletedFirstMission(dailyBoard),
+      action: "focus-daily",
+    },
+    {
+      id: "reward",
+      label: "First reward",
+      description: "Claim the bonus card and 24 coins once the board is cleared.",
+      complete: hasClaimedFirstReward(dailyBoard),
+      action: dailyBoard?.canClaim ? "claim-daily" : "focus-daily",
+    },
+  ].filter((step) => !step.hidden);
+}
+
+function getActiveRookieStep(dailyBoard) {
+  return getRookieSteps(dailyBoard).find((step) => !step.complete) || null;
+}
+
+function focusHomeSection(panelKey, selector) {
+  ensureHomePanelOpen(panelKey);
+  selectedVaultCardId = null;
+  vaultCardFlipped = false;
+  gameState.mode = "home";
+  renderApp();
+  requestAnimationFrame(() => {
+    document
+      .querySelector(selector)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+async function startGuestRun() {
+  const result = await signInAsGuest();
+  await handleSession(result.session || null);
+  startComputerBattle();
+  renderApp();
+}
+
+function startPrimaryPlayFlow() {
+  selectedVaultCardId = null;
+  vaultCardFlipped = false;
+
+  if (getPrimaryPlayConfig().action === "go-online") {
+    openArenaLeague();
+  } else {
+    startComputerBattle();
+  }
+
+  renderApp();
+}
+
 function activeDeck() {
   return backend.decks.find((deck) => deck.active) || backend.decks[0] || null;
 }
@@ -231,7 +369,7 @@ async function bootstrapBackend() {
 }
 
 function renderBrand() {
-  return `<button class="pvx-brand" data-action="go-home" aria-label="PupVerse home"><span class="pvx-brand-gem"><i>PV</i></span><span><b>PUP<span>VERSE</span></b><small>Collect · Battle · Conquer</small></span></button>`;
+  return `<button class="pvx-brand" data-action="go-home" aria-label="PupVerse home"><span class="pvx-brand-gem"><i>PV</i></span><span><b>PUP<span>VERSE</span></b><small>Neon collectible card battler</small></span></button>`;
 }
 
 function renderShell(content, active = gameState.mode) {
@@ -304,24 +442,16 @@ function renderShell(content, active = gameState.mode) {
       </main>
 
       <nav class="pvx-mobile-nav" aria-label="Mobile navigation">
-        <button class="${active === "home" ? "active" : ""}" data-action="go-home">
-          <span>⌂</span><b>Home</b>
+        <button class="${active === "battle" || active === "online" ? "active" : ""}" data-action="go-play">
+          <span>⚔</span><b>Play</b>
+        </button>
+
+        <button class="${active === "home" ? "active" : ""}" data-action="focus-daily">
+          <span>✦</span><b>Daily Ops</b>
         </button>
 
         <button class="${active === "collection" ? "active" : ""}" data-action="go-vault">
           <span>◇</span><b>Vault</b>
-        </button>
-
-        <button class="${active === "shop" ? "active" : ""}" data-action="go-shop">
-          <span>✦</span><b>Packs</b>
-        </button>
-
-        <button class="${active === "battle" ? "active" : ""}" data-action="go-battle">
-          <span>⚔</span><b>Solo</b>
-        </button>
-
-        <button class="${active === "online" ? "active" : ""}" data-action="go-online">
-          <span>◉</span><b>Online</b>
         </button>
       </nav>
     </section>
@@ -525,6 +655,49 @@ function renderSectorSnapshot(sector) {
   return `<article class="pvx-sector-mini"><div class="pvx-sector-mini-head"><span>${escapeHtml(sector.icon)}</span><small>${escapeHtml(sector.title)}</small><strong>${sector.ownedUnique}/${sector.totalCards}</strong></div><div class="pvx-progress"><i style="width:${sector.pressure}%"></i></div><p>${sector.completion}% scanned · ${escapeHtml(sector.dominant.short)} ${sector.dominant.value}</p></article>`;
 }
 
+function renderCoreActionCard(action) {
+  const packAttr = action.packId ? ` data-pack-id="${escapeHtml(action.packId)}"` : "";
+
+  return `
+    <article class="pvx-core-action ${action.featured ? "featured" : ""}">
+      <div class="pvx-core-action-icon">${escapeHtml(action.icon)}</div>
+      <div class="pvx-core-action-copy">
+        <small>${escapeHtml(action.kicker)}</small>
+        <h2>${escapeHtml(action.title)}</h2>
+        <p>${escapeHtml(action.copy)}</p>
+      </div>
+      <div class="pvx-core-action-meta">
+        <strong>${escapeHtml(action.meta)}</strong>
+        <button class="${action.featured ? "pvx-primary" : ""}" data-action="${action.action}"${packAttr}>
+          ${escapeHtml(action.button)}
+          ${action.featured ? "<i>→</i>" : ""}
+        </button>
+      </div>
+    </article>
+  `;
+}
+
+function renderRookieStep(step, index, active) {
+  const packAttr = step.packId ? ` data-pack-id="${escapeHtml(step.packId)}"` : "";
+
+  return `
+    <article class="pvx-rookie-step ${step.complete ? "complete" : ""} ${active ? "current" : ""}">
+      <span>${step.complete ? "✓" : index + 1}</span>
+      <div>
+        <small>${escapeHtml(step.label)}</small>
+        <p>${escapeHtml(step.description)}</p>
+      </div>
+      ${
+        step.complete
+          ? `<strong>Done</strong>`
+          : active
+            ? `<button data-action="${step.action}"${packAttr}>Continue</button>`
+            : `<strong>Queued</strong>`
+      }
+    </article>
+  `;
+}
+
 function renderHomePanel({ panelKey, className = "", eyebrow, title, summary, badge, content }) {
   const open = isHomePanelOpen(panelKey);
 
@@ -569,14 +742,39 @@ function renderHome() {
   const showcase = getShowcaseCards();
   const command = getHomeCommandData();
   const dailyBoard = getActiveDailyBoard();
+  const rookieSteps = getRookieSteps(dailyBoard);
+  const activeRookieStep = getActiveRookieStep(dailyBoard);
+  const rookieCompleteCount = rookieSteps.filter((step) => step.complete).length;
   const rating = command.rating;
   const level = backend.profile?.level ?? gameState.level;
   const onlineWins = backend.profile?.online_wins ?? gameState.onlineWins;
   const recommendedPack = command.recommendedPack?.pack || packs[0];
-  const canAffordRecommended = (backend.profile?.coins ?? gameState.coins) >= (recommendedPack?.cost || 0);
+  const canAffordRecommended = getCoinBalance() >= (recommendedPack?.cost || 0);
   const levelProgress = clampPercent((((level - 1) % 10) + 1) * 10);
   const winProgress = clampPercent(((onlineWins % 10) / 10) * 100 || (onlineWins ? 100 : 0));
   const rewardCard = dailyBoard.rewardCard;
+  const spotlightCard = rewardCard || command.rosterLead || showcase[1] || cards[0] || null;
+  const playConfig = getPrimaryPlayConfig();
+  const heroPrimaryAction = canStartGuestRun()
+    ? {
+        action: "start-guest",
+        label: "Start guest run",
+        kicker: "Instant account",
+      }
+    : {
+        action: "go-play",
+        label: playConfig.title,
+        kicker: playConfig.tag,
+      };
+  const heroSecondaryAction = canStartGuestRun()
+    ? {
+        action: "go-online",
+        label: "Create synced account",
+      }
+    : {
+        action: dailyBoard.canClaim ? "claim-daily" : "focus-daily",
+        label: dailyBoard.canClaim ? "Claim today's reward" : "Open daily ops",
+      };
   const dailyButtonLabel = dailyBoard.rewardClaimed
     ? "Reward claimed"
     : dailyBoard.canClaim
@@ -587,49 +785,103 @@ function renderHome() {
   const dailySummaryCopy = dailyBoard.rewardClaimed
     ? `${rewardCard?.name || "Bonus card"} and 24 coins claimed today.`
     : dailyBoard.rewardLocked
-      ? "Daily rewards are currently banked in offline vault mode only."
+      ? "Daily rewards are protected by signed-in progression."
       : `${dailyBoard.completedCount}/${dailyBoard.totalTasks} missions complete · reset in ${dailyBoard.refreshesIn}`;
   const dailyRewardCopy = dailyBoard.rewardClaimed
     ? "Today's reward is already banked. A fresh four-mission board rotates in at the next reset."
     : dailyBoard.rewardLocked
-      ? "Verified account progression stays protected. This reward currently pays out in offline vault mode only."
+      ? "Signed-in daily drops pay out from the protected progression service."
       : dailyBoard.canClaim
         ? "Mission board cleared. Claim the live reward now for one bonus card and 24 coins."
         : `${dailyBoard.totalTasks - dailyBoard.completedCount} mission${dailyBoard.totalTasks - dailyBoard.completedCount === 1 ? "" : "s"} left before today's reward unlocks.`;
   const commandSummaryCopy = command.rosterLead
-    ? `${command.rosterLead.name} is your current anchor, with the roster leaning into ${PLAYSTYLE_COPY[command.rosterStat.key] || "adaptive pressure"}.`
-    : "Your live roster feed will sharpen up as soon as your first real squad comes online.";
+    ? `${command.rosterLead.name} is anchoring your current build, with the roster leaning into ${PLAYSTYLE_COPY[command.rosterStat.key] || "adaptive pressure"}.`
+    : "Open the first pack, reveal the lead unit, and start shaping a real mobile battle squad.";
+  const coreActions = [
+    {
+      icon: "⚔",
+      kicker: "Play",
+      title: canStartGuestRun() ? "Start the run" : playConfig.title,
+      copy: canStartGuestRun()
+        ? "Create a guest player instantly, then jump straight into the tutorial battle."
+        : playConfig.copy,
+      meta: canStartGuestRun()
+        ? "Guest-safe start"
+        : hasTutorialWin()
+          ? `${gameState.playerWins} solo win${gameState.playerWins === 1 ? "" : "s"}`
+          : "1 round to clear",
+      action: canStartGuestRun() ? "start-guest" : "go-play",
+      button: canStartGuestRun() ? "Start guest run" : "Play now",
+      featured: true,
+    },
+    {
+      icon: "✦",
+      kicker: "Daily Ops",
+      title: dailyBoard.canClaim ? "Reward ready" : `${dailyBoard.completedCount}/${dailyBoard.totalTasks} missions`,
+      copy: dailyBoard.rewardClaimed
+        ? "Today's drop is banked. A fresh four-task board rotates at the next reset."
+        : dailyBoard.canClaim
+          ? "All four tasks are clear. Claim the bonus card and 24 coins now."
+          : "Keep the session tight: one board, one reward, one reason to come back tomorrow.",
+      meta: dailyBoard.rewardClaimed
+        ? "Reward claimed"
+        : dailyBoard.canClaim
+          ? "Claim now"
+          : `Reset ${dailyBoard.refreshesIn}`,
+      action: dailyBoard.canClaim ? "claim-daily" : "focus-daily",
+      button: dailyBoard.canClaim ? "Claim reward" : "Open board",
+    },
+    {
+      icon: "◇",
+      kicker: "Vault",
+      title: hasOpenedFirstPack() ? "Inspect your collection" : "Unlock the first cards",
+      copy: hasOpenedFirstPack()
+        ? "Every pull lives here, with duplicates, rarity, and deck-building pressure in one place."
+        : "Open a starter pack first so your vault has real cards to build around.",
+      meta: `${command.progress.uniqueOwned}/${command.progress.totalCards} discovered`,
+      action: hasOpenedFirstPack() ? "go-vault" : "open-pack",
+      button: hasOpenedFirstPack() ? "Open vault" : "Open starter pack",
+      packId: hasOpenedFirstPack() ? "" : recommendedPack?.id || "crypto",
+    },
+  ];
+
   return renderShell(`
     <section class="pvx-home">
       <div class="pvx-home-aurora"></div><div class="pvx-home-orbit orbit-a"></div><div class="pvx-home-orbit orbit-b"></div>
       <section class="pvx-home-hero">
         <div class="pvx-hero-copy">
-          <p class="pvx-eyebrow"><i></i> Live season command</p>
-          <h1><span>PUP</span><em>VERSE</em></h1>
-          <p class="pvx-hero-text">Build your live roster, push ranked wins, and keep your vault growing. Every mission, pull, and duel feeds the season climb.</p>
-          <div class="pvx-hero-actions"><button class="pvx-primary" data-action="go-online"><span>Live Queue</span><b>Enter Arena Matchmaking</b><i>→</i></button><button class="pvx-secondary" data-action="go-battle"><span>⚔</span><b>Run Solo Drill</b></button></div>
+          <p class="pvx-eyebrow"><i></i> Free starter run</p>
+          <h1><span>NEON</span><em>BATTLES</em></h1>
+          <p class="pvx-hero-text">PupVerse is a premium mobile-first collectible card battler. The loop stays simple: win a fast round, open a pack, clear the board, claim the drop, and come back tomorrow.</p>
+          <div class="pvx-home-badges"><span>Fast 3-minute runs</span><span>Daily bonus card + 24 coins</span><span>Guest start, account later</span></div>
+          <div class="pvx-hero-actions"><button class="pvx-primary" data-action="${heroPrimaryAction.action}"><span>${escapeHtml(heroPrimaryAction.kicker)}</span><b>${escapeHtml(heroPrimaryAction.label)}</b><i>→</i></button><button class="pvx-secondary" data-action="${heroSecondaryAction.action}"><span>✦</span><b>${escapeHtml(heroSecondaryAction.label)}</b></button></div>
           <div class="pvx-micro-stats"><article><small>Player level</small><strong>${level}</strong><i style="--value:${levelProgress}%"></i></article><article><small>Arena wins</small><strong>${onlineWins}</strong><i style="--value:${winProgress}%"></i></article><article><small>League rating</small><strong>${rating}</strong><i style="--value:${getRankProgress(rating)}%"></i></article></div>
         </div>
-        ${renderHomePanel({
-          panelKey: "showcase",
-          className: "pvx-showcase-panel",
-          eyebrow: "Season spotlight",
-          title: "Live card spotlight",
-          summary: "Preview the cards headlining your current run, then collapse the stage whenever you want a tighter command view.",
-          badge: `${showcase.length} spotlight cards`,
-          content: `
-            <div class="pvx-hero-cards" aria-label="Featured PupVerse cards">
-              <div class="pvx-card-rings"></div><div class="pvx-card-platform"></div>
-              ${showcase.map((card, index) => `<button class="pvx-hero-card hero-${index + 1}" data-action="preview-card" data-card-id="${card.id}" aria-label="Preview ${escapeHtml(card.name)}">${renderCardImage(card)}<span>${escapeHtml(card.rarity)}</span></button>`).join("")}
-              <span class="pvx-float-rune rune-a">✦</span><span class="pvx-float-rune rune-b">◇</span><span class="pvx-float-rune rune-c">+</span>
-            </div>
-          `,
-        })}
+        <article class="pvx-home-spotlight">
+          <div class="pvx-home-spotlight-copy">
+            <small>${rewardCard ? "Today's featured drop" : "Starter spotlight"}</small>
+            <h2>${escapeHtml(spotlightCard?.name || "First card incoming")}</h2>
+            <p>${escapeHtml(rewardCard ? dailyRewardCopy : spotlightCard ? `${spotlightCard.rarity} ${spotlightCard.element} card art, tuned for a premium mobile feel.` : "Open a pack to reveal the first featured pup.")}</p>
+            <div><span>${escapeHtml(spotlightCard?.rarity || "Reward card")}</span><b>${escapeHtml(spotlightCard?.element || "Collection")}</b></div>
+          </div>
+          ${
+            spotlightCard
+              ? `<button class="pvx-home-spotlight-card" data-action="preview-card" data-card-id="${spotlightCard.id}" aria-label="Preview ${escapeHtml(spotlightCard.name)}">${renderCardImage(spotlightCard)}</button>`
+              : ""
+          }
+        </article>
       </section>
-      <section class="pvx-home-bottom">
-        <article class="pvx-progress-card"><div class="pvx-panel-icon">◇</div><div><small>Collection vault</small><h2>${command.progress.uniqueOwned} <span>/ ${command.progress.totalCards} discovered</span></h2><div class="pvx-progress"><i style="width:${command.progress.percentage}%"></i></div><p><b>${command.progress.percentage}% complete</b><span>${command.progress.duplicateCount} duplicates</span></p></div><button data-action="go-vault">Explore vault →</button></article>
-        <article class="pvx-daily-card"><span class="pvx-live"><i></i> Daily reward</span><h2>${dailyBoard.rewardClaimed ? "Reward claimed" : `${dailyBoard.completedCount}/${dailyBoard.totalTasks} missions cleared`}</h2><p>${escapeHtml(dailySummaryCopy)}</p><div><span>${rewardCard ? escapeHtml(rewardCard.rarity) : "Bonus card"}</span><b>◈ ${dailyBoard.coinsReward}</b></div><button data-action="${dailyBoard.canClaim ? "claim-daily" : dailyBoard.rewardClaimed ? "go-vault" : "go-battle"}" ${dailyBoard.rewardLocked ? "disabled" : ""}>${dailyButtonLabel}</button></article>
-        <article class="pvx-rank-card"><div class="pvx-rank-gem"><span>◆</span></div><div><small>Current league</small><h2>${getRankTier(rating)}</h2><p>${rating} RP · ${Math.max(0, getNextRankTarget(rating) - rating)} to promotion</p></div><button data-action="go-online">Ranked queue</button></article>
+      <section class="pvx-core-actions">${coreActions.map(renderCoreActionCard).join("")}</section>
+      <section class="pvx-rookie-run">
+        <header>
+          <div>
+            <p class="pvx-eyebrow"><i></i> First 5 minutes</p>
+            <h2>${activeRookieStep ? "ROOKIE RUNWAY" : "STARTER LOOP COMPLETE"}</h2>
+            <p>${escapeHtml(activeRookieStep ? `Stay narrow: finish ${activeRookieStep.label.toLowerCase()} and keep the loop moving.` : "Guest start, first win, first pack, first mission, and first reward are all online. Now optimize for retention.")}</p>
+          </div>
+          <span>${rookieCompleteCount}/${rookieSteps.length}</span>
+        </header>
+        <div class="pvx-rookie-step-list">${rookieSteps.map((step, index) => renderRookieStep(step, index, activeRookieStep?.id === step.id)).join("")}</div>
       </section>
       ${renderHomePanel({
         panelKey: "daily",
@@ -656,14 +908,14 @@ function renderHome() {
       ${renderHomePanel({
         panelKey: "command",
         className: "pvx-command-panel",
-        eyebrow: "Roster command",
-        title: "Live roster intel",
+        eyebrow: "Deck pressure",
+        title: "Collection command",
         summary: commandSummaryCopy,
-        badge: `${command.ownedCards.length} unique`,
+        badge: `${command.progress.percentage}% discovered`,
         content: `
           <section class="pvx-command-grid">
             <article class="pvx-command-card pvx-command-journey">
-              <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Season climb</p><h2>COMMAND JOURNEY</h2></div><span>${command.prestigeCount} prestige</span></div>
+              <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Progress path</p><h2>COMMAND JOURNEY</h2></div><span>${command.prestigeCount} prestige</span></div>
               <div class="pvx-journey-grid">${command.journey.map(renderJourneyTrack).join("")}</div>
               <div class="pvx-command-actions"><button data-action="go-vault">Inspect vault</button><button data-action="go-online">Push rank</button></div>
             </article>
@@ -747,9 +999,45 @@ function renderSoloBattle() {
   if (!gameState.playerCard || !gameState.computerCard) startComputerBattle();
   const selected = gameState.selectedStat;
   const result = gameState.roundResult;
+  const dailyBoard = getActiveDailyBoard();
+  const tutorialBanner = !hasTutorialWin()
+    ? {
+        eyebrow: "Rookie tutorial",
+        title: "Win 1 round to unlock the first pack",
+        copy: "Keep this first battle simple: choose the strongest stat, win the round, then jump straight into your first pack opening.",
+        action: "go-home",
+        button: "Back to home loop",
+      }
+    : !hasOpenedFirstPack()
+      ? {
+          eyebrow: "Tutorial cleared",
+          title: "Your first pack is next",
+          copy: "The first win is secured. Open a starter pack now so the vault, daily board, and reward loop all come online.",
+          action: "open-pack",
+          button: "Open starter pack",
+          packId: packs[0]?.id || "crypto",
+        }
+      : !hasCompletedFirstMission(dailyBoard)
+        ? {
+            eyebrow: "Daily board live",
+            title: "Push the first mission",
+            copy: "You have enough momentum now. Finish the open tasks on Daily Ops and claim the first bonus drop.",
+            action: "focus-daily",
+            button: "Open daily ops",
+          }
+        : null;
+  const tutorialActionAttr = tutorialBanner?.packId
+    ? ` data-pack-id="${escapeHtml(tutorialBanner.packId)}"`
+    : "";
+
   return renderShell(`
     <section class="pvx-arena">
       <header class="pvx-arena-head"><div><p class="pvx-eyebrow"><i></i> Solo combat simulation</p><h1>BATTLE <span>ARENA</span></h1></div><div class="pvx-scoreboard"><article><small>You</small><strong>${gameState.playerWins}</strong></article><span>VS</span><article><small>CPU</small><strong>${gameState.computerWins}</strong></article></div><button data-action="reset-solo">Reset run</button></header>
+      ${
+        tutorialBanner
+          ? `<section class="pvx-battle-tutorial"><div><small>${escapeHtml(tutorialBanner.eyebrow)}</small><h2>${escapeHtml(tutorialBanner.title)}</h2><p>${escapeHtml(tutorialBanner.copy)}</p></div><button data-action="${tutorialBanner.action}"${tutorialActionAttr}>${escapeHtml(tutorialBanner.button)}</button></section>`
+          : ""
+      }
       <main class="pvx-arena-board"><div class="pvx-arena-sky"></div><div class="pvx-arena-floor"></div><div class="pvx-arena-beam beam-left"></div><div class="pvx-arena-beam beam-right"></div>${renderBattleCard(gameState.playerCard, "Your challenger", false, true)}<section class="pvx-referee"><span><i></i> Arena referee online</span><div class="pvx-vs-core"><b>VS</b><i></i></div><p class="${gameState.winner || ""}">${escapeHtml(gameState.resultMessage)}</p>${selected ? `<div class="pvx-round-values">${renderRoundValue(result?.playerValue ?? getEffectiveStatValue(gameState.playerCard, selected), result?.playerBoost)}<span>${titleCase(selected)}</span>${renderRoundValue(result?.opponentValue ?? getEffectiveStatValue(gameState.computerCard, selected), result?.opponentBoost)}</div>` : `<small>Choose the stat that gives your pup the edge</small>`}</section>${renderBattleCard(gameState.computerCard, "CPU challenger", !gameState.computerRevealed)}</main>
       <section class="pvx-stat-dock"><div><small>${gameState.computerRevealed ? "Official result" : "Your move"}</small><strong>${gameState.computerRevealed ? titleCase(gameState.winner) : "Select one combat stat"}</strong></div><div class="pvx-stat-grid">${stats.map((stat) => `<button class="${getAbilityBoost(gameState.playerCard, stat.key) ? "has-boost" : ""}" data-action="solo-stat" data-stat="${stat.key}" ${gameState.computerRevealed ? "disabled" : ""}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(gameState.playerCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${gameState.computerRevealed ? `<button class="pvx-next" data-action="next-solo">Next round →</button>` : `<span class="pvx-timer">◷ 20s</span>`}</section>
     </section>`, "battle");
@@ -777,7 +1065,7 @@ function renderGuestUpgrade() {
 
 function renderAuth() {
   const signup = backend.authMode === "signup";
-  return renderShell(`<section class="pvx-auth"><div class="pvx-auth-art"><div class="pvx-auth-orbits"></div>${renderRankGem(1248)}<p class="pvx-eyebrow"><i></i> Protected player identity</p><h1>ENTER THE<br><span>ARENA LEAGUE</span></h1><p>Your decks, rank, rewards and match history travel safely with your account.</p><div><span>◆ Server referee</span><span>◆ Private Realtime</span><span>◆ Match recovery</span></div></div><form class="pvx-auth-card" data-auth-form><nav><button class="${signup ? "" : "active"}" type="button" data-action="auth-tab" data-mode="signin">Sign in</button><button class="${signup ? "active" : ""}" type="button" data-action="auth-tab" data-mode="signup">Create account</button></nav><p>${signup ? "Create your player identity" : "Welcome back, challenger"}</p>${signup ? `<label><span>Username</span><input id="authUsername" autocomplete="username" minlength="3" maxlength="20" placeholder="NeonPup" required></label>` : ""}<label><span>Email</span><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required></label><label><span>Password</span><input id="authPassword" type="password" autocomplete="${signup ? "new-password" : "current-password"}" minlength="8" placeholder="8+ characters" required></label>${backend.error ? `<p class="pvx-form-error">${escapeHtml(backend.error)}</p>` : ""}${backend.message ? `<p class="pvx-form-message">${escapeHtml(backend.message)}</p>` : ""}<button class="pvx-auth-submit" data-action="auth-submit" type="submit">${signup ? "Create player" : "Sign in securely"}<span>→</span></button><small>Use a username—never your real name. Email is never public.</small></form></section>`, "online");
+  return renderShell(`<section class="pvx-auth"><div class="pvx-auth-art"><div class="pvx-auth-orbits"></div>${renderRankGem(1248)}<p class="pvx-eyebrow"><i></i> Protected player identity</p><h1>START YOUR<br><span>NEON RUN</span></h1><p>Create a synced account or start instantly as a guest. Your packs, rank, daily drops, and recovery all stay protected once you decide to secure the run.</p><div><span>◆ Guest start</span><span>◆ Synced rewards</span><span>◆ Match recovery</span></div></div><form class="pvx-auth-card" data-auth-form><nav><button class="${signup ? "" : "active"}" type="button" data-action="auth-tab" data-mode="signin">Sign in</button><button class="${signup ? "active" : ""}" type="button" data-action="auth-tab" data-mode="signup">Create account</button></nav><p>${signup ? "Create your player identity" : "Welcome back, challenger"}</p>${signup ? `<label><span>Username</span><input id="authUsername" autocomplete="username" minlength="3" maxlength="20" placeholder="NeonPup" required></label>` : ""}<label><span>Email</span><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required></label><label><span>Password</span><input id="authPassword" type="password" autocomplete="${signup ? "new-password" : "current-password"}" minlength="8" placeholder="8+ characters" required></label>${backend.error ? `<p class="pvx-form-error">${escapeHtml(backend.error)}</p>` : ""}${backend.message ? `<p class="pvx-form-message">${escapeHtml(backend.message)}</p>` : ""}<button class="pvx-auth-submit" data-action="auth-submit" type="submit">${signup ? "Create player" : "Sign in securely"}<span>→</span></button><button class="pvx-auth-ghost" type="button" data-action="start-guest">Start as guest now</button><small>Use a username, never your real name. You can secure the guest run later without losing the vault.</small></form></section>`, "online");
 }
 
 function renderQueue() {
@@ -983,6 +1271,17 @@ async function handleClick(event) {
       });
     }
     return go("home");
+  }
+  if (action === "go-play") return startPrimaryPlayFlow();
+  if (action === "focus-daily") return focusHomeSection("daily", ".pvx-daily-ops");
+  if (action === "start-guest") {
+    try {
+      return await startGuestRun();
+    } catch (error) {
+      backend.error = error.message;
+      renderApp();
+      return notice(error.message || "Guest start failed.");
+    }
   }
   if (action === "go-shop") return go("shop");
   if (action === "go-vault") return go("collection");
