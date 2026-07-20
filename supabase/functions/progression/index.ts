@@ -28,6 +28,20 @@ const authenticatedHandler = withSupabase(
         return json(data, 201);
       }
 
+      if (body?.action === "daily-board") {
+        const { data, error } = await ctx.supabase.rpc("get_daily_ops_board");
+        if (error) throw error;
+        return json(data, 200);
+      }
+
+      if (body?.action === "claim-daily") {
+        const { data, error } = await ctx.supabase.rpc("claim_daily_ops_reward", {
+          p_request_id: String(body.requestId || ""),
+        });
+        if (error) throw error;
+        return json(data, 200);
+      }
+
       return json({ error: "Unknown progression action" }, 400);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Progression request failed";
@@ -43,4 +57,3 @@ export default {
     return authenticatedHandler(req);
   },
 };
-

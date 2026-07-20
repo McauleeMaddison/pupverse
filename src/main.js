@@ -60,6 +60,7 @@ import {
   reportRemotePlayer,
   blockRemotePlayer,
   openRemotePack,
+  claimRemoteDailyReward,
   isSupabaseConfigured,
 } from "./services/arenaBackend.js";
 
@@ -116,6 +117,7 @@ const backend = {
   profile: null,
   decks: [],
   leaderboard: [],
+  dailyBoard: null,
   remoteMatch: null,
   presence: {},
   authMode: "signin",
@@ -135,6 +137,7 @@ async function refreshPlayerData() {
   backend.profile = result.profile;
   backend.decks = result.decks;
   backend.leaderboard = result.leaderboard;
+  backend.dailyBoard = result.dailyBoard;
   hydrateCloudProgress(result.profile, result.playerCards, result.packOpenings);
 }
 
@@ -150,6 +153,7 @@ async function handleSession(session) {
   } else {
     backend.profile = null;
     backend.decks = [];
+    backend.dailyBoard = null;
     backend.remoteMatch = null;
     useLocalProgress();
   }
@@ -466,10 +470,26 @@ function renderSectorSnapshot(sector) {
   return `<article class="pvx-sector-mini"><div class="pvx-sector-mini-head"><span>${escapeHtml(sector.icon)}</span><small>${escapeHtml(sector.title)}</small><strong>${sector.ownedUnique}/${sector.totalCards}</strong></div><div class="pvx-progress"><i style="width:${sector.pressure}%"></i></div><p>${sector.completion}% scanned · ${escapeHtml(sector.dominant.short)} ${sector.dominant.value}</p></article>`;
 }
 
+function getActiveDailyBoard() {
+  const sourceBoard = backend.session?.user
+    ? backend.dailyBoard || getDailyMissionBoard()
+    : getDailyMissionBoard();
+
+  if (!sourceBoard) return getDailyMissionBoard();
+
+  return {
+    ...sourceBoard,
+    rewardCard:
+      sourceBoard.rewardCard ||
+      cards.find((card) => card.id === sourceBoard.rewardCardId) ||
+      null,
+  };
+}
+
 function renderHome() {
   const showcase = getShowcaseCards();
   const command = getHomeCommandData();
-  const dailyBoard = getDailyMissionBoard();
+  const dailyBoard = getActiveDailyBoard();
   const rating = command.rating;
   const level = backend.profile?.level ?? gameState.level;
   const onlineWins = backend.profile?.online_wins ?? gameState.onlineWins;
@@ -842,7 +862,14 @@ async function handleClick(event) {
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
-  if (action === "go-home") return go("home");
+  if (action === "go-home") {
+    if (backend.session?.user) {
+      await refreshPlayerData().catch((error) => {
+        console.warn("[PupVerse] Home refresh failed:", error?.message || error);
+      });
+    }
+    return go("home");
+  }
   if (action === "go-shop") return go("shop");
   if (action === "go-vault") return go("collection");
   if (action === "go-battle") { selectedVaultCardId = null; vaultCardFlipped = false; startComputerBattle(); return renderApp(); }
@@ -866,6 +893,31 @@ async function handleClick(event) {
     return;
   }
   if (action === "claim-daily") {
+    if (backend.configured && backend.session) {
+      try {
+        const result = await claimRemoteDailyReward(crypto.randomUUID());
+        const rewardCard = cards.find((card) => card.id === result.reward_card_id) || null;
+
+        await refreshPlayerData().catch((error) => {
+          console.warn("[PupVerse] Daily board refresh failed:", error?.message || error);
+        });
+
+        if (rewardCard) {
+          gameState.lastOpenedPack = [rewardCard];
+        }
+
+        renderApp();
+        return notice(
+          result.ok
+            ? `Daily drop secured: ${rewardCard?.name || "bonus card"} and ${result.coins || 24} coins.`
+            : result.error || "Daily drop updated."
+        );
+      } catch (error) {
+        renderApp();
+        return notice(error.message || "Daily drop claim failed.");
+      }
+    }
+
     const result = claimDailyMissionReward();
     renderApp();
     return notice(result.message || result.error || "Daily drop updated.");

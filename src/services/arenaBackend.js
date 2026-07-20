@@ -216,11 +216,11 @@ export async function upgradeGuestAccount({ email, username }) {
 
   if (error) throw error;
 
-  if (data.user?.id) {
-    const { error: profileError } = await supabase
-      .from("player_profiles")
-      .update({ username: cleanUsername })
-      .eq("id", data.user.id);
+  if (data.user?.id) {
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({ username: cleanUsername })
+      .eq("id", data.user.id);
 
     if (profileError) throw profileError;
   }
@@ -271,87 +271,101 @@ export async function signOut() {
 }
 
 export async function loadPlayerData(userId) {
-  assertConfigured();
+  assertConfigured();
 
-  const [profileResult, saveResult] = await Promise.all([
-    supabase
-      .from("player_profiles")
-      .select("id, username, created_at")
-      .eq("id", userId)
-      .single(),
+  const [profileResult, remoteCards, packOpenings, decks, leaderboard, dailyBoard] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select(
+        "id, username, avatar, banner, level, xp, coins, rank_rating, rank_tier, online_wins, ranked_wins, losses, draws, created_at"
+      )
+      .eq("id", userId)
+      .single(),
 
-    supabase
-      .from("player_saves")
-      .select("*")
-      .eq("user_id", userId)
-      .single(),
-  ]);
+    optionalQuery(
+      "card vault",
+      supabase
+        .from("player_cards")
+        .select("card_id, quantity, favourite, acquired_at")
+        .eq("player_id", userId)
+        .order("acquired_at")
+    ),
 
-  if (profileResult.error) throw profileResult.error;
-  if (saveResult.error) throw saveResult.error;
+    optionalQuery(
+      "pack history",
+      supabase
+        .from("pack_openings")
+        .select("id, pack_id, card_ids, coins_spent, balance_after, opened_at")
+        .eq("player_id", userId)
+        .order("opened_at", { ascending: false })
+        .limit(25)
+    ),
 
-  const [remoteCards, packOpenings, decks, leaderboard] = await Promise.all([
-    optionalQuery(
-      "card vault",
-      supabase
-        .from("player_cards")
-        .select("card_id, quantity, favourite, acquired_at")
-        .eq("player_id", userId)
-        .order("acquired_at")
-    ),
+    optionalQuery(
+      "decks",
+      supabase
+        .from("decks")
+        .select("id, name, active, deck_cards(card_id, position)")
+        .eq("player_id", userId)
+        .order("created_at")
+    ),
 
-    optionalQuery(
-      "pack history",
-      supabase
-        .from("pack_openings")
-        .select("id, pack_id, card_ids, coins_spent, balance_after, opened_at")
-        .eq("player_id", userId)
-        .order("opened_at", { ascending: false })
-        .limit(25)
-    ),
+    optionalQuery(
+      "leaderboard",
+      supabase.from("leaderboard").select("*").order("position").limit(25)
+    ),
 
-    optionalQuery(
-      "decks",
-      supabase
-        .from("decks")
-        .select("id, name, active, deck_cards(card_id, position)")
-        .eq("player_id", userId)
-        .order("created_at")
-    ),
+    (async () => {
+      try {
+        return await invokeProgression({
+          action: "daily-board",
+        });
+      } catch (error) {
+        console.warn(
+          "[PupVerse] Optional daily board unavailable:",
+          error?.message || error
+        );
+        return null;
+      }
+    })(),
+  ]);
 
-    optionalQuery(
-      "leaderboard",
-      supabase.from("leaderboard").select("*").order("position").limit(25)
-    ),
-  ]);
+  if (profileResult.error) throw profileResult.error;
 
-  const profile = {
-    ...profileResult.data,
-    ...saveResult.data,
-    avatar: getAvatar(profileResult.data.username),
-    online_wins: saveResult.data.online_wins ?? 0,
-    ranked_wins: saveResult.data.ranked_wins ?? 0,
-    rank_tier: saveResult.data.rank_tier ?? "Rookie",
-  };
+  const profile = {
+    ...profileResult.data,
+    avatar: profileResult.data.avatar || getAvatar(profileResult.data.username),
+    online_wins: profileResult.data.online_wins ?? 0,
+    ranked_wins: profileResult.data.ranked_wins ?? 0,
+    rank_tier: profileResult.data.rank_tier ?? "Rookie",
+  };
 
-  return {
-    profile,
-    playerCards:
-      remoteCards.length > 0
-        ? remoteCards
-        : collectionToPlayerCards(saveResult.data.collection),
-    packOpenings,
-    decks,
-    leaderboard,
-  };
+  return {
+    profile,
+    playerCards:
+      remoteCards.length > 0
+        ? remoteCards
+        : collectionToPlayerCards([]),
+    packOpenings,
+    decks,
+    leaderboard,
+    dailyBoard,
+  };
 }
 
 export async function openRemotePack(packId, requestId) {
-  return invokeProgression({
+  return invokeProgression({
     action: "open-pack",
     packId,
-    requestId: requestId || crypto.randomUUID(),
-  });
+    requestId: requestId || crypto.randomUUID(),
+  });
+}
+
+export async function claimRemoteDailyReward(requestId) {
+  return invokeProgression({
+    action: "claim-daily",
+    requestId: requestId || crypto.randomUUID(),
+  });
 }
 
 export async function setFavouriteCard(cardId, favourite) {
