@@ -12,6 +12,7 @@ import {
   getFilteredCollectionCards,
   getCollectionWithCounts,
   getCollectionProgress,
+  getDailyMissionBoard,
   setCollectionFilter,
   addDevCoins,
   getStatValue,
@@ -29,6 +30,7 @@ import {
   getRankProgress,
   hydrateCloudProgress,
   useLocalProgress,
+  claimDailyMissionReward,
 } from "./game/state.js";
 import { startAnimatedBackground } from "./ui/animatedBackground.js";
 import { renderCardImage, setupImageFallbacks } from "./ui/cardImages.js";
@@ -456,22 +458,45 @@ function renderJourneyTrack(track) {
   return `<article class="pvx-journey-track"><div><small>${escapeHtml(track.label)}</small><strong>${escapeHtml(track.progressLabel)}</strong></div><div class="pvx-progress"><i style="width:${track.percent}%"></i></div><p>${escapeHtml(track.reward)}</p></article>`;
 }
 
-function renderSectorReport(sector) {
-  return `<article class="pvx-sector-row"><div class="pvx-sector-head"><span>${sector.icon}</span><div><small>${escapeHtml(sector.title)}</small><strong>${sector.ownedUnique}/${sector.totalCards}</strong></div></div><div class="pvx-sector-metrics"><b>${sector.completion}% scanned</b><i>${escapeHtml(sector.dominant.short)} ${sector.dominant.value}</i></div><div class="pvx-progress sector-progress"><i style="width:${sector.pressure}%"></i></div><p>${escapeHtml(sector.copy)}</p></article>`;
+function renderDailyTask(task) {
+  return `<article class="pvx-daily-task ${task.complete ? "complete" : ""}"><div class="pvx-daily-task-head"><span>${escapeHtml(task.icon)}</span><div><small>${escapeHtml(task.title)}</small><p>${escapeHtml(task.description)}</p></div><strong>${task.complete ? "Done" : `${task.progress}/${task.goal}`}</strong></div><div class="pvx-progress"><i style="width:${task.percent}%"></i></div></article>`;
+}
+
+function renderSectorSnapshot(sector) {
+  return `<article class="pvx-sector-mini"><div class="pvx-sector-mini-head"><span>${escapeHtml(sector.icon)}</span><small>${escapeHtml(sector.title)}</small><strong>${sector.ownedUnique}/${sector.totalCards}</strong></div><div class="pvx-progress"><i style="width:${sector.pressure}%"></i></div><p>${sector.completion}% scanned · ${escapeHtml(sector.dominant.short)} ${sector.dominant.value}</p></article>`;
 }
 
 function renderHome() {
   const showcase = getShowcaseCards();
   const command = getHomeCommandData();
+  const dailyBoard = getDailyMissionBoard();
   const rating = command.rating;
   const level = backend.profile?.level ?? gameState.level;
   const onlineWins = backend.profile?.online_wins ?? gameState.onlineWins;
-  const missionWins = Math.min(2, gameState.playerWins);
-  const missionComplete = missionWins >= 2;
   const recommendedPack = command.recommendedPack?.pack || packs[0];
   const canAffordRecommended = (backend.profile?.coins ?? gameState.coins) >= (recommendedPack?.cost || 0);
   const levelProgress = clampPercent((((level - 1) % 10) + 1) * 10);
   const winProgress = clampPercent(((onlineWins % 10) / 10) * 100 || (onlineWins ? 100 : 0));
+  const rewardCard = dailyBoard.rewardCard;
+  const dailyButtonLabel = dailyBoard.rewardClaimed
+    ? "Drop secured"
+    : dailyBoard.canClaim
+      ? "Collect drop"
+      : dailyBoard.rewardLocked
+        ? "Local vault only"
+        : "Finish daily tasks";
+  const dailySummaryCopy = dailyBoard.rewardClaimed
+    ? `${rewardCard?.name || "Bonus card"} and 24 coins claimed today.`
+    : dailyBoard.rewardLocked
+      ? "Daily drops currently pay out only in local vault mode."
+      : `${dailyBoard.completedCount}/${dailyBoard.totalTasks} tasks complete · refresh in ${dailyBoard.refreshesIn}`;
+  const dailyRewardCopy = dailyBoard.rewardClaimed
+    ? "Today's drop has already been secured. A new four-task board rotates in at the next reset."
+    : dailyBoard.rewardLocked
+      ? "Protected accounts keep server-trusted progression. Daily drop claiming is currently local-only."
+      : dailyBoard.canClaim
+        ? "All four missions are done. Claim the drop now for one bonus card and 24 coins."
+        : `${dailyBoard.totalTasks - dailyBoard.completedCount} task${dailyBoard.totalTasks - dailyBoard.completedCount === 1 ? "" : "s"} left before the drop unlocks.`;
   return renderShell(`
     <section class="pvx-home">
       <div class="pvx-home-aurora"></div><div class="pvx-home-orbit orbit-a"></div><div class="pvx-home-orbit orbit-b"></div>
@@ -489,8 +514,20 @@ function renderHome() {
       </div>
       <section class="pvx-home-bottom">
         <article class="pvx-progress-card"><div class="pvx-panel-icon">◇</div><div><small>Collection vault</small><h2>${command.progress.uniqueOwned} <span>/ ${command.progress.totalCards} discovered</span></h2><div class="pvx-progress"><i style="width:${command.progress.percentage}%"></i></div><p><b>${command.progress.percentage}% complete</b><span>${command.progress.duplicateCount} duplicates</span></p></div><button data-action="go-vault">Explore vault →</button></article>
-        <article class="pvx-daily-card"><span class="pvx-live"><i></i> Daily mission</span><h2>${missionComplete ? "Mission complete" : "Win two arena rounds"}</h2><p>${missionComplete ? "Your combat rhythm is locked in. Push into ranked or scout a new pack." : "Take any deck into battle and prove your strongest stats."}</p><div><span>${missionWins} / 2</span><b>${missionComplete ? "+150 XP secured" : "+150 XP"}</b></div><button data-action="${missionComplete ? "go-online" : "go-battle"}">${missionComplete ? "Enter ranked" : "Continue mission"}</button></article>
+        <article class="pvx-daily-card"><span class="pvx-live"><i></i> Daily drop</span><h2>${dailyBoard.rewardClaimed ? "Reward collected" : `${dailyBoard.completedCount}/${dailyBoard.totalTasks} tasks cleared`}</h2><p>${escapeHtml(dailySummaryCopy)}</p><div><span>${rewardCard ? escapeHtml(rewardCard.rarity) : "Bonus card"}</span><b>◈ ${dailyBoard.coinsReward}</b></div><button data-action="${dailyBoard.canClaim ? "claim-daily" : dailyBoard.rewardClaimed ? "go-vault" : "go-battle"}" ${dailyBoard.rewardLocked ? "disabled" : ""}>${dailyButtonLabel}</button></article>
         <article class="pvx-rank-card"><div class="pvx-rank-gem"><span>◆</span></div><div><small>Current league</small><h2>${getRankTier(rating)}</h2><p>${rating} RP · ${Math.max(0, getNextRankTarget(rating) - rating)} to promotion</p></div><button data-action="go-online">Ranked queue</button></article>
+      </section>
+      <section class="pvx-daily-ops ${dailyBoard.rewardClaimed ? "claimed" : ""}">
+        <div class="pvx-daily-ops-head"><div><p class="pvx-eyebrow"><i></i> Daily operations</p><h2>4 fresh tasks every 24 hours</h2><p>Complete the full board to unlock one premium bonus card and 24 coins.</p></div><div class="pvx-daily-reset"><small>Refresh</small><strong>${dailyBoard.refreshesIn}</strong><span>${dailyBoard.completedCount}/${dailyBoard.totalTasks}</span></div></div>
+        <div class="pvx-daily-ops-layout">
+          <div class="pvx-daily-task-grid">${dailyBoard.tasks.map(renderDailyTask).join("")}</div>
+          <aside class="pvx-daily-reward-panel">
+            <div class="pvx-daily-reward-copy"><small>Daily drop</small><h3>${rewardCard ? escapeHtml(rewardCard.name) : "Bonus reward"}</h3><p>${escapeHtml(dailyRewardCopy)}</p></div>
+            ${rewardCard ? `<button class="pvx-daily-reward-card" data-action="preview-card" data-card-id="${rewardCard.id}" aria-label="Preview ${escapeHtml(rewardCard.name)}">${renderCardImage(rewardCard)}<span><small>${escapeHtml(rewardCard.rarity)}</small><b>${escapeHtml(rewardCard.name)}</b><em>${escapeHtml(rewardCard.element)}</em></span></button>` : ""}
+            <div class="pvx-daily-loot"><span>Bonus card</span><strong>◈ ${dailyBoard.coinsReward}</strong><small>Coins included</small></div>
+            <button class="pvx-primary" data-action="claim-daily" ${dailyBoard.canClaim ? "" : "disabled"}>${dailyBoard.rewardClaimed ? "Collected" : dailyBoard.rewardLocked ? "Local vault only" : dailyBoard.canClaim ? "Claim bonus drop" : "Finish all 4 tasks"}<i>→</i></button>
+          </aside>
+        </div>
       </section>
       <section class="pvx-command-grid">
         <article class="pvx-command-card pvx-command-journey">
@@ -500,7 +537,7 @@ function renderHome() {
         </article>
         <article class="pvx-command-card pvx-command-sectors">
           <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Faction pressure</p><h2>SECTOR RADAR</h2></div><span>${command.sectors.length} zones</span></div>
-          <div class="pvx-sector-list">${command.sectors.map(renderSectorReport).join("")}</div>
+          <div class="pvx-sector-mini-grid">${command.sectors.map(renderSectorSnapshot).join("")}</div>
           <div class="pvx-command-footer"><strong>${escapeHtml(command.rosterStat.label)}</strong><p>Your collection currently leans toward ${escapeHtml(PLAYSTYLE_COPY[command.rosterStat.key] || "adaptive play")}.</p></div>
         </article>
         <article class="pvx-command-card pvx-command-intel">
@@ -514,12 +551,6 @@ function renderHome() {
             </div>
           </div>
           <div class="pvx-command-actions"><button data-action="go-battle">Run solo drill</button><button data-action="open-pack" data-pack-id="${recommendedPack?.id || "crypto"}" ${canAffordRecommended ? "" : "disabled"}>${canAffordRecommended ? "Open target pack" : `Need ${Math.max(0, (recommendedPack?.cost || 0) - (backend.profile?.coins ?? gameState.coins))} more coins`}</button></div>
-        </article>
-        <article class="pvx-command-card pvx-command-live">
-          <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Live operations</p><h2>OPS BOARD</h2></div><span>Mobile-ready</span></div>
-          <div class="pvx-ops-list">${command.liveOps.map((entry) => `<article><small>${escapeHtml(entry.window)}</small><strong>${escapeHtml(entry.title)}</strong><p>${escapeHtml(entry.copy)}</p></article>`).join("")}</div>
-          <div class="pvx-command-footer"><strong>Quick route</strong><p>Use solo battles to tune your stat instincts, then jump into protected online matches once your vault starts to diversify.</p></div>
-          <div class="pvx-command-actions"><button data-action="go-shop">Open pack shop</button><button data-action="go-online">Enter arena</button></div>
         </article>
       </section>
     </section>`, "home");
@@ -833,6 +864,11 @@ async function handleClick(event) {
     clearTimeout(packTimer);
     packTimer = setTimeout(finishPackAnimation, 2800);
     return;
+  }
+  if (action === "claim-daily") {
+    const result = claimDailyMissionReward();
+    renderApp();
+    return notice(result.message || result.error || "Daily drop updated.");
   }
   if (action === "skip-pack") { clearTimeout(packTimer); return finishPackAnimation(); }
   if (action === "reveal-pack-card") { const index = Number(target.dataset.index); if (index === revealedPackCards) revealedPackCards += 1; return renderApp(); }

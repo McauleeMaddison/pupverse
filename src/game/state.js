@@ -3,6 +3,110 @@ import { packs } from "../data/packs.js";
 import { getBaseStatValue, resolveStatContest } from "./battleRules.js";
 
 const SAVE_KEY = "pupverse-save-v3";
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DAILY_COIN_REWARD = 24;
+const DAILY_TASK_GROUPS = ["soloWins", "soloBattles", "packsOpened", "collection"];
+const DAILY_TASK_POOL = [
+  {
+    id: "solo-win-1",
+    group: "soloWins",
+    metric: "playerWins",
+    goal: 1,
+    icon: "⚔",
+    title: "Win 1 solo round",
+    description: "Land one clean stat victory in the training arena.",
+  },
+  {
+    id: "solo-win-2",
+    group: "soloWins",
+    metric: "playerWins",
+    goal: 2,
+    icon: "⚔",
+    title: "Win 2 solo rounds",
+    description: "Chain together two successful solo arena wins.",
+  },
+  {
+    id: "solo-win-3",
+    group: "soloWins",
+    metric: "playerWins",
+    goal: 3,
+    icon: "⚔",
+    title: "Win 3 solo rounds",
+    description: "Push your best deck through a three-win solo streak.",
+  },
+  {
+    id: "solo-play-3",
+    group: "soloBattles",
+    metric: "totalBattles",
+    goal: 3,
+    icon: "◷",
+    title: "Play 3 solo rounds",
+    description: "Stay in rhythm and complete three training rounds.",
+  },
+  {
+    id: "solo-play-5",
+    group: "soloBattles",
+    metric: "totalBattles",
+    goal: 5,
+    icon: "◷",
+    title: "Play 5 solo rounds",
+    description: "Run a longer session and sharpen your stat reads.",
+  },
+  {
+    id: "pack-open-1",
+    group: "packsOpened",
+    metric: "totalPacksOpened",
+    goal: 1,
+    icon: "✦",
+    title: "Open 1 pack",
+    description: "Crack one pack to feed the vault with fresh pups.",
+  },
+  {
+    id: "pack-open-2",
+    group: "packsOpened",
+    metric: "totalPacksOpened",
+    goal: 2,
+    icon: "✦",
+    title: "Open 2 packs",
+    description: "Double up on discoveries and widen the roster.",
+  },
+  {
+    id: "collect-cards-4",
+    group: "collection",
+    metric: "collectionCount",
+    goal: 4,
+    icon: "◇",
+    title: "Collect 4 cards",
+    description: "Add four more pups to your vault in any way you can.",
+  },
+  {
+    id: "collect-unique-1",
+    group: "collection",
+    metric: "uniqueOwned",
+    goal: 1,
+    icon: "◇",
+    title: "Discover 1 new pup",
+    description: "Find a card you have never owned before.",
+  },
+  {
+    id: "collect-unique-2",
+    group: "collection",
+    metric: "uniqueOwned",
+    goal: 2,
+    icon: "◇",
+    title: "Discover 2 new pups",
+    description: "Expand the archive with two new unique cards.",
+  },
+  {
+    id: "collect-duplicates-2",
+    group: "collection",
+    metric: "duplicateCount",
+    goal: 2,
+    icon: "⧉",
+    title: "Gain 2 duplicates",
+    description: "Build out fusion material by pulling two duplicates.",
+  },
+];
 let progressSource = "local";
 
 function createDefaultSave() {
@@ -17,6 +121,8 @@ function createDefaultSave() {
     rankRating: 1248,
     onlineWins: 18,
     rankedWins: 11,
+    totalPacksOpened: 0,
+    dailyOps: null,
   };
 }
 
@@ -39,6 +145,131 @@ function loadSave() {
 
 function shuffleCards(cardList) {
   return [...cardList].sort(() => Math.random() - 0.5);
+}
+
+function getCurrentDailyCycleKey(now = Date.now()) {
+  return `ops-${new Date(now).toISOString()}`;
+}
+
+function getNextDailyResetAt(dailyOps, now = Date.now()) {
+  const refreshAt = Number(dailyOps?.refreshAt || 0);
+  return refreshAt > now ? refreshAt : now + DAY_MS;
+}
+
+function createSeededRandom(seedInput) {
+  let seed = Array.from(String(seedInput || "pupverse")).reduce(
+    (total, char) => (total * 31 + char.charCodeAt(0)) >>> 0,
+    0
+  ) || 1;
+
+  return () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+}
+
+function getRewardWeight(card) {
+  switch (String(card?.rarity || "").toLowerCase()) {
+    case "mythic":
+      return 8;
+    case "legendary":
+      return 6;
+    case "epic":
+      return 4;
+    case "rare":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function pickDailyTasks(cycleKey) {
+  const random = createSeededRandom(`${cycleKey}:tasks`);
+
+  return DAILY_TASK_GROUPS.map((group) => {
+    const options = DAILY_TASK_POOL.filter((task) => task.group === group);
+    const index = Math.floor(random() * options.length);
+    return { ...options[index] };
+  });
+}
+
+function pickDailyRewardCardId(cycleKey) {
+  const rewardPool = cards.filter((card) => getRewardWeight(card) >= 2);
+  const random = createSeededRandom(`${cycleKey}:reward`);
+
+  if (!rewardPool.length) {
+    return cards[0]?.id || null;
+  }
+
+  const totalWeight = rewardPool.reduce((sum, card) => sum + getRewardWeight(card), 0);
+  let cursor = random() * totalWeight;
+
+  for (const card of rewardPool) {
+    cursor -= getRewardWeight(card);
+    if (cursor <= 0) return card.id;
+  }
+
+  return rewardPool[rewardPool.length - 1].id;
+}
+
+function getMissionMetrics() {
+  const uniqueOwned = new Set(gameState.collection).size;
+
+  return {
+    playerWins: Number(gameState.playerWins) || 0,
+    totalBattles: Number(gameState.totalBattles) || 0,
+    totalPacksOpened: Number(gameState.totalPacksOpened) || 0,
+    collectionCount: gameState.collection.length,
+    uniqueOwned,
+    duplicateCount: Math.max(0, gameState.collection.length - uniqueOwned),
+  };
+}
+
+function createDailyOpsState(now = Date.now()) {
+  const cycleKey = getCurrentDailyCycleKey(now);
+
+  return {
+    cycleKey,
+    createdAt: new Date(now).toISOString(),
+    refreshAt: now + DAY_MS,
+    baseline: getMissionMetrics(),
+    tasks: pickDailyTasks(cycleKey),
+    rewardCardId: pickDailyRewardCardId(cycleKey),
+    rewardClaimed: false,
+    claimedAt: null,
+  };
+}
+
+function hasValidDailyOps(state) {
+  return Boolean(
+    state &&
+      typeof state === "object" &&
+      typeof state.cycleKey === "string" &&
+      Number.isFinite(Number(state.refreshAt)) &&
+      state.baseline &&
+      Array.isArray(state.tasks) &&
+      state.tasks.length === 4
+  );
+}
+
+function ensureDailyOpsState(force = false) {
+  const now = Date.now();
+  const activeBoard = gameState.dailyOps;
+  const hasExpiredBoard = hasValidDailyOps(activeBoard) && Number(activeBoard.refreshAt) <= now;
+
+  if (force || !hasValidDailyOps(activeBoard) || hasExpiredBoard) {
+    gameState.dailyOps = createDailyOpsState(now);
+    saveGame();
+  }
+
+  return gameState.dailyOps;
+}
+
+function formatResetCountdown(milliseconds) {
+  const remaining = Math.max(0, milliseconds);
+  const hours = Math.floor(remaining / (60 * 60 * 1000));
+  const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
+  return `${hours}h ${String(minutes).padStart(2, "0")}m`;
 }
 
 function getRandomCardsFromPack(packName, amount = 3) {
@@ -90,6 +321,7 @@ export function hydrateCloudProgress(profile, playerCards = [], packOpenings = [
     rankRating: Number(profile.rank_rating) || 0,
     onlineWins: Number(profile.online_wins) || 0,
     rankedWins: Number(profile.ranked_wins) || 0,
+    totalPacksOpened: packOpenings.length,
     collection,
     favouriteCards: playerCards.filter((entry) => entry.favourite).map((entry) => entry.card_id),
     packOpeningHistory: packOpenings,
@@ -105,6 +337,7 @@ export function useLocalProgress() {
     favouriteCards: [],
     packOpeningHistory: [],
   });
+  ensureDailyOpsState();
 }
 
 export function isCloudProgress() {
@@ -124,6 +357,8 @@ export function saveGame() {
     rankRating: gameState.rankRating,
     onlineWins: gameState.onlineWins,
     rankedWins: gameState.rankedWins,
+    totalPacksOpened: gameState.totalPacksOpened,
+    dailyOps: gameState.dailyOps,
   };
 
   localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
@@ -254,6 +489,7 @@ export function finishPackOpening() {
   }
 
   gameState.coins -= selectedPack.cost;
+  gameState.totalPacksOpened += 1;
   gameState.lastOpenedPack = pulledCards;
   gameState.collection.push(...pulledCards.map((card) => card.id));
   gameState.shopMessage = `Boom! You opened ${selectedPack.name} and pulled ${pulledCards.length} cards.`;
@@ -356,6 +592,90 @@ export function resetGameStats() {
   gameState.roundResult = null;
 
   saveGame();
+}
+
+export function getDailyMissionBoard() {
+  const dailyOps = ensureDailyOpsState();
+  const metrics = getMissionMetrics();
+  const tasks = dailyOps.tasks.map((task) => {
+    const startingValue = Number(dailyOps.baseline?.[task.metric] || 0);
+    const currentValue = Number(metrics[task.metric] || 0);
+    const progress = Math.max(0, currentValue - startingValue);
+    const clamped = Math.min(task.goal, progress);
+
+    return {
+      ...task,
+      progress: clamped,
+      complete: clamped >= task.goal,
+      percent: Math.round((clamped / task.goal) * 100),
+    };
+  });
+
+  const rewardCard = cards.find((card) => card.id === dailyOps.rewardCardId) || null;
+  const completedCount = tasks.filter((task) => task.complete).length;
+  const allComplete = completedCount === tasks.length;
+  const rewardClaimed = Boolean(dailyOps.rewardClaimed);
+
+  return {
+    cycleKey: dailyOps.cycleKey,
+    tasks,
+    completedCount,
+    totalTasks: tasks.length,
+    allComplete,
+    rewardClaimed,
+    rewardCard,
+    canClaim: progressSource === "local" && allComplete && !rewardClaimed,
+    rewardLocked: progressSource !== "local",
+    coinsReward: DAILY_COIN_REWARD,
+    refreshesIn: formatResetCountdown(getNextDailyResetAt(dailyOps) - Date.now()),
+    claimedAt: dailyOps.claimedAt,
+  };
+}
+
+export function claimDailyMissionReward() {
+  const board = getDailyMissionBoard();
+
+  if (progressSource !== "local") {
+    return {
+      ok: false,
+      error: "Daily drops are currently local-vault rewards only.",
+    };
+  }
+
+  if (board.rewardClaimed) {
+    return {
+      ok: false,
+      error: "Today's drop has already been collected.",
+    };
+  }
+
+  if (!board.allComplete) {
+    return {
+      ok: false,
+      error: "Finish all four daily tasks to unlock the drop.",
+    };
+  }
+
+  const rewardCard = board.rewardCard || cards[0] || null;
+
+  gameState.coins += DAILY_COIN_REWARD;
+  if (rewardCard?.id) {
+    gameState.collection.push(rewardCard.id);
+    gameState.lastOpenedPack = [rewardCard];
+  }
+
+  gameState.dailyOps.rewardClaimed = true;
+  gameState.dailyOps.claimedAt = new Date().toISOString();
+  saveGame();
+
+  return {
+    ok: true,
+    rewardCard,
+    coins: DAILY_COIN_REWARD,
+    message: rewardCard
+      ? `Daily drop secured: ${rewardCard.name} and ${DAILY_COIN_REWARD} coins.`
+      : `Daily drop secured: ${DAILY_COIN_REWARD} coins.`,
+  };
 }
 
 /* =====================================================
