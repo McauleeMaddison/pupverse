@@ -36,6 +36,7 @@ import { startAnimatedBackground } from "./ui/animatedBackground.js";
 import { renderCardImage, setupImageFallbacks } from "./ui/cardImages.js";
 import { getAbilityBoost, getEffectiveStatValue, isPrestigeRarity } from "./game/battleRules.js";
 import { escapeHtml, titleCase } from "./utils/format.js";
+import { trackEvent } from "./utils/analytics.js";
 import {
   initializeArenaBackend,
   signInAsGuest,
@@ -112,6 +113,11 @@ let subscribedMatchId = null;
 let packOverlay = null;
 let revealedPackCards = 0;
 let packOpeningRequestInFlight = false;
+let activeInfoPanel = null;
+let onlineStatus = navigator.onLine;
+const ONBOARDING_STORAGE_KEY = "pupverse-beta-onboarding-dismissed";
+const FEEDBACK_URL = "https://github.com/McauleeMaddison/pupverse/issues/new?title=PupVerse%20beta%20feedback";
+const RANKED_BETA_ENABLED = false;
 
 const backend = {
   configured: isSupabaseConfigured,
@@ -372,6 +378,28 @@ function renderBrand() {
   return `<button class="pvx-brand" data-action="go-home" aria-label="PupVerse home"><span class="pvx-brand-gem"><i>PV</i></span><span><b>PUP<span>VERSE</span></b><small>Neon collectible card battler</small></span></button>`;
 }
 
+function hasDismissedOnboarding() {
+  try { return window.localStorage?.getItem(ONBOARDING_STORAGE_KEY) === "true"; }
+  catch { return false; }
+}
+
+function renderInfoPanel() {
+  if (!activeInfoPanel) return "";
+  const panels = {
+    beta: { eyebrow: "Public beta", title: "Built with players", copy: "PupVerse is actively being tuned. Game balance, rewards, and online features may change while we learn from the community." },
+    safety: { eyebrow: "Player safety", title: "Play smart. Stay kind.", copy: "PupVerse is designed for players aged 13+. Do not share personal details, passwords, or private room codes publicly. Use the in-match Report and Block controls if another player breaks the rules." },
+    privacy: { eyebrow: "Privacy", title: "Only what the game needs", copy: "Account details are used to save your progress and keep matches secure. Product analytics use anonymous event names, not personal details. Contact support to request help with your account." },
+    terms: { eyebrow: "Terms of play", title: "Keep the arena fair", copy: "No cheating, harassment, account sharing, or attempts to manipulate rewards or rankings. Beta content is virtual only, has no cash value, and may change as the game evolves." },
+  };
+  const panel = panels[activeInfoPanel];
+  if (!panel) return "";
+  return `<section class="pvx-info-modal" role="dialog" aria-modal="true" aria-labelledby="infoPanelTitle"><button class="pvx-info-scrim" data-action="close-info" aria-label="Close information panel"></button><article><button class="pvx-info-close" data-action="close-info" aria-label="Close">×</button><p class="pvx-eyebrow"><i></i> ${panel.eyebrow}</p><h2 id="infoPanelTitle">${panel.title}</h2><p>${panel.copy}</p><button class="pvx-primary" data-action="close-info">Got it <i>→</i></button></article></section>`;
+}
+
+function renderBetaFooter() {
+  return `<footer class="pvx-beta-footer"><div><span class="pvx-beta-pill">Public beta</span><p>${onlineStatus ? "Play instantly · Progress may change during beta" : "You’re offline · Local play is still available"}</p></div><nav aria-label="Beta information"><button data-action="show-info" data-panel="beta">About beta</button><button data-action="show-info" data-panel="safety">Safety</button><button data-action="show-info" data-panel="privacy">Privacy</button><button data-action="show-info" data-panel="terms">Terms</button><button data-action="open-feedback">Feedback ↗</button></nav></footer>`;
+}
+
 function renderShell(content, active = gameState.mode) {
   const coins = backend.profile?.coins ?? gameState.coins;
   const avatar = escapeHtml(backend.profile?.avatar || "MP");
@@ -444,6 +472,8 @@ function renderShell(content, active = gameState.mode) {
       <main class="pvx-main">
         ${content}
       </main>
+
+      ${renderBetaFooter()}
 
       <nav class="pvx-mobile-nav" aria-label="Mobile navigation">
         <button class="${active === "battle" || active === "online" ? "active" : ""}" data-action="go-play">
@@ -749,6 +779,7 @@ function renderHome() {
   const level = backend.profile?.level ?? gameState.level;
   const rewardCard = dailyBoard.rewardCard;
   const spotlightCard = rewardCard || showcase[1] || cards[0] || null;
+  const showOnboarding = !hasDismissedOnboarding() && !hasTutorialWin();
   const playConfig = getPrimaryPlayConfig();
   const heroPrimaryAction = !hasTutorialWin()
     ? { action: "go-battle", label: "Start first battle", kicker: "No account needed" }
@@ -839,6 +870,7 @@ function renderHome() {
         </article>
       </section>
       <section class="pvx-core-actions">${coreActions.map(renderCoreActionCard).join("")}</section>
+      ${showOnboarding ? `<aside class="pvx-onboarding" aria-label="Getting started"><div><p class="pvx-eyebrow"><i></i> Your first three moves</p><h2>Start simple. Build momentum.</h2><p>Every first session follows the same satisfying loop—battle, collect, return.</p></div><ol><li><b>01</b><span><strong>Battle</strong><small>Choose a stat and take your first round.</small></span></li><li><b>02</b><span><strong>Open a pack</strong><small>Turn your win into fresh tactical options.</small></span></li><li><b>03</b><span><strong>Visit Daily Ops</strong><small>Complete missions for a bonus drop.</small></span></li></ol><button data-action="dismiss-onboarding">I’m ready <i>→</i></button></aside>` : ""}
     </section>`, "home");
 }
 
@@ -993,10 +1025,10 @@ function renderOnlineHub() {
   const rating = backend.profile?.rank_rating ?? gameState.rankRating;
   const modes = [
     { id: "casual", tag: "Unranked", title: "Casual Match", copy: "Fast real-player battles with no rating loss. Test decks, earn XP and have fun.", icon: "ϟ", perks: ["No rating loss", "+XP & coins"] },
-    { id: "ranked", tag: "Season 04", title: "Ranked League", copy: "The flagship competition. Outsmart rivals and climb toward PupVerse Champion.", icon: "◆", perks: ["Fair matchmaking", "Season rewards"], featured: true },
+    { id: "ranked", tag: "Coming after beta", title: "Ranked League", copy: "Ranked opens after live matchmaking, recovery, and fair-play checks are complete.", icon: "◆", perks: ["Protected launch", "Season rewards"], featured: true, disabled: !RANKED_BETA_ENABLED },
     { id: "friend", tag: "Private room", title: "Friend Battle", copy: "Create a six-character room code and invite exactly the player you want.", icon: "∞", perks: ["Private invite", "Preset reactions"] },
   ];
-  return renderShell(`<section class="pvx-online-hub"><header><div><p class="pvx-eyebrow"><i></i> Competitive universe</p><h1>ARENA <span>LEAGUE</span></h1><p>Real challengers. Protected matches. One path to PupVerse Champion.</p></div><article class="pvx-current-rank">${renderRankGem(rating)}<div><small>Current rank</small><h2>${getRankTier(rating)}</h2><p>${rating} RP · ${getNextRankTarget(rating) - rating} to promotion</p><div class="pvx-progress"><i style="width:${getRankProgress(rating)}%"></i></div></div></article></header><section class="pvx-mode-grid">${modes.map((mode) => `<article class="pvx-mode ${mode.featured ? "featured" : ""}">${mode.featured ? `<span class="pvx-featured">Flagship mode</span>` : ""}<div class="pvx-mode-art"><div class="pvx-mode-rings"></div><b>${mode.icon}</b></div><div class="pvx-mode-copy"><small>${mode.tag}</small><h2>${mode.title}</h2><p>${mode.copy}</p><div>${mode.perks.map((perk) => `<span>${perk}</span>`).join("")}</div><button data-action="online-mode" data-mode="${mode.id}">${mode.id === "friend" ? "Create or join" : mode.id === "ranked" ? "Enter ranked" : "Find challenger"}<i>→</i></button></div></article>`).join("")}</section>${backend.leaderboard.length ? `<section class="pvx-leaderboard"><div><p class="pvx-eyebrow"><i></i> Live standings</p><h2>Season leaders</h2></div><ol>${backend.leaderboard.slice(0, 5).map((player) => `<li><b>#${player.position}</b><span class="pvx-avatar">${escapeHtml(player.avatar)}</span><strong>${escapeHtml(player.username)}</strong><small>${escapeHtml(player.rank_tier)}</small><em>${player.rank_rating} RP</em></li>`).join("")}</ol></section>` : `<section class="pvx-online-note"><span>◆</span><p><strong>${backend.configured ? "Secure multiplayer enabled" : "Multiplayer preview mode"}</strong>${backend.configured ? "Supabase authentication, private rooms and server-side match decisions are connected." : "The full flow is playable locally. Add Supabase keys to connect real accounts."}</p></section>`}</section>`, "online");
+  return renderShell(`<section class="pvx-online-hub"><header><div><p class="pvx-eyebrow"><i></i> Competitive universe</p><h1>ARENA <span>LEAGUE</span></h1><p>Real challengers. Protected matches. One path to PupVerse Champion.</p></div><article class="pvx-current-rank">${renderRankGem(rating)}<div><small>Current rank</small><h2>${getRankTier(rating)}</h2><p>${rating} RP · ${getNextRankTarget(rating) - rating} to promotion</p><div class="pvx-progress"><i style="width:${getRankProgress(rating)}%"></i></div></div></article></header><section class="pvx-mode-grid">${modes.map((mode) => `<article class="pvx-mode ${mode.featured ? "featured" : ""} ${mode.disabled ? "disabled" : ""}">${mode.featured ? `<span class="pvx-featured">${mode.disabled ? "Beta hold" : "Flagship mode"}</span>` : ""}<div class="pvx-mode-art"><div class="pvx-mode-rings"></div><b>${mode.icon}</b></div><div class="pvx-mode-copy"><small>${mode.tag}</small><h2>${mode.title}</h2><p>${mode.copy}</p><div>${mode.perks.map((perk) => `<span>${perk}</span>`).join("")}</div><button data-action="online-mode" data-mode="${mode.id}" ${mode.disabled ? "disabled" : ""}>${mode.disabled ? "Launching after beta" : mode.id === "friend" ? "Create or join" : mode.id === "ranked" ? "Enter ranked" : "Find challenger"}<i>→</i></button></div></article>`).join("")}</section>${backend.leaderboard.length ? `<section class="pvx-leaderboard"><div><p class="pvx-eyebrow"><i></i> Live standings</p><h2>Season leaders</h2></div><ol>${backend.leaderboard.slice(0, 5).map((player) => `<li><b>#${player.position}</b><span class="pvx-avatar">${escapeHtml(player.avatar)}</span><strong>${escapeHtml(player.username)}</strong><small>${escapeHtml(player.rank_tier)}</small><em>${player.rank_rating} RP</em></li>`).join("")}</ol></section>` : `<section class="pvx-online-note"><span>◆</span><p><strong>${backend.configured ? "Secure multiplayer enabled" : "Multiplayer preview mode"}</strong>${backend.configured ? "Supabase authentication, private rooms and server-side match decisions are connected." : "The full flow is playable locally. Add Supabase keys to connect real accounts."}</p></section>`}</section>`, "online");
 }
 
 function renderGuestUpgrade() {
@@ -1100,7 +1132,7 @@ function renderApp() {
     else screen = renderOnlineHub();
   } else if (gameState.mode === "daily") screen = renderDailyOps();
   else screen = renderHome();
-  app.innerHTML = `<canvas id="spaceCanvas"></canvas><main class="app-shell">${screen}</main>${renderPackOverlay()}`;
+  app.innerHTML = `<canvas id="spaceCanvas"></canvas><main class="app-shell">${screen}</main>${renderPackOverlay()}${renderInfoPanel()}`;
   app.onclick = handleClick;
   app.onsubmit = (event) => {
     event.preventDefault();
@@ -1173,6 +1205,7 @@ async function finishPackAnimation() {
     } else {
       finishPackOpening();
     }
+    if (gameState.totalPacksOpened === 1) trackEvent("first_pack_opened", { source: backend.session ? "cloud" : "local" });
     packOverlay = { ...packOverlay, phase: "reveal", cards: [...gameState.lastOpenedPack] };
     revealedPackCards = 0;
     renderApp();
@@ -1205,6 +1238,10 @@ async function handleClick(event) {
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
+  if (action === "show-info") { activeInfoPanel = target.dataset.panel; return renderApp(); }
+  if (action === "close-info") { activeInfoPanel = null; return renderApp(); }
+  if (action === "open-feedback") { trackEvent("feedback_opened"); window.open(FEEDBACK_URL, "_blank", "noopener,noreferrer"); return; }
+  if (action === "dismiss-onboarding") { try { window.localStorage?.setItem(ONBOARDING_STORAGE_KEY, "true"); } catch {} return renderApp(); }
   if (action === "go-home") {
     if (backend.session?.user) {
       await refreshPlayerData().catch((error) => {
@@ -1213,7 +1250,7 @@ async function handleClick(event) {
     }
     return go("home");
   }
-  if (action === "go-play") return startPrimaryPlayFlow();
+  if (action === "go-play") { if (!hasTutorialWin()) trackEvent("first_battle_started"); return startPrimaryPlayFlow(); }
   if (action === "go-daily" || action === "focus-daily") return go("daily");
   if (action === "start-guest") {
     try {
@@ -1226,7 +1263,7 @@ async function handleClick(event) {
   }
   if (action === "go-shop") return go("shop");
   if (action === "go-vault") return go("collection");
-  if (action === "go-battle") { selectedVaultCardId = null; vaultCardFlipped = false; startComputerBattle(); return renderApp(); }
+  if (action === "go-battle") { if (!hasTutorialWin()) trackEvent("first_battle_started"); selectedVaultCardId = null; vaultCardFlipped = false; startComputerBattle(); return renderApp(); }
   if (action === "go-online") { selectedVaultCardId = null; vaultCardFlipped = false; openArenaLeague(); return renderApp(); }
   if (action === "toggle-home-panel") return toggleHomePanel(target.dataset.panel);
   if (action === "preview-card") { selectedVaultCardId = target.dataset.cardId; vaultCardFlipped = false; return renderApp(); }
@@ -1262,6 +1299,7 @@ async function handleClick(event) {
         }
 
         renderApp();
+        if (result.ok) trackEvent("daily_reward_claimed", { source: "cloud" });
         return notice(
           result.ok
             ? `Daily drop secured: ${rewardCard?.name || "bonus card"} and ${result.coins || 24} coins.`
@@ -1274,6 +1312,7 @@ async function handleClick(event) {
     }
 
     const result = claimDailyMissionReward();
+    if (result.ok) trackEvent("daily_reward_claimed", { source: "local" });
     renderApp();
     return notice(result.message || result.error || "Daily drop updated.");
   }
@@ -1282,12 +1321,13 @@ async function handleClick(event) {
   if (action === "reveal-all") { revealedPackCards = packOverlay?.cards?.length || 0; return renderApp(); }
   if (action === "finish-reveal") { packOverlay = null; return go("collection"); }
   if (action === "close-pack") { packOverlay = null; return renderApp(); }
-  if (action === "solo-stat") { chooseBattleStat(target.dataset.stat); return renderApp(); }
+  if (action === "solo-stat") { chooseBattleStat(target.dataset.stat); if (gameState.winner === "player" && gameState.playerWins === 1) trackEvent("first_battle_won"); return renderApp(); }
   if (action === "next-solo") { startComputerBattle(); return renderApp(); }
   if (action === "reset-solo") { resetGameStats(); startComputerBattle(); return renderApp(); }
   if (action === "online-home") { await removeArenaSubscriptions(); openArenaLeague(); return renderApp(); }
   if (action === "online-mode") {
     const mode = target.dataset.mode;
+    if (mode === "ranked" && !RANKED_BETA_ENABLED) return notice("Ranked opens after the public-beta verification pass.");
     if (mode === "friend") { gameState.arenaStatus = "friend-select"; return renderApp(); }
     try { return backend.configured && backend.session ? await beginRemoteQueue(mode) : beginLocalQueue(mode); }
     catch (error) { gameState.arenaStatus = "hub"; renderApp(); return notice(error.message); }
@@ -1378,8 +1418,10 @@ async function handleClick(event) {
     event.preventDefault();
     backend.error = ""; backend.message = ""; target.disabled = true;
     try {
+      if (backend.authMode === "signup") trackEvent("account_signup_started");
       const credentials = { email: document.querySelector("#authEmail")?.value.trim(), password: document.querySelector("#authPassword")?.value || "", username: document.querySelector("#authUsername")?.value.trim() };
       const result = backend.authMode === "signup" ? await backendSignUp(credentials) : await backendSignIn(credentials);
+      if (backend.authMode === "signup") trackEvent("account_signup_completed");
       if (backend.authMode === "signup" && !result.session) { backend.authMode = "signin"; backend.message = "Account created. Confirm your email, then sign in."; }
     } catch (error) { backend.error = error.message; }
     return renderApp();
@@ -1393,5 +1435,22 @@ document.addEventListener("keydown", (event) => {
   else if (packOverlay) { packOverlay = null; renderApp(); }
 });
 
+function trackSessionStart() {
+  const storageKey = "pupverse-last-session-date";
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const previous = window.localStorage?.getItem(storageKey);
+    const daysSincePrevious = previous
+      ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${previous}T00:00:00Z`)) / (24 * 60 * 60 * 1000))
+      : null;
+    if (daysSincePrevious === 1) trackEvent("day_1_return");
+    window.localStorage?.setItem(storageKey, today);
+  } catch {}
+}
+
+window.addEventListener("online", () => { onlineStatus = true; renderApp(); notice("You’re back online. Synced features are available again."); });
+window.addEventListener("offline", () => { onlineStatus = false; renderApp(); notice("You’re offline. Solo play remains available; synced features will retry when you reconnect."); });
+
+trackSessionStart();
 renderApp();
 bootstrapBackend();
