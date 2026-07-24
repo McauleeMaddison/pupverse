@@ -214,6 +214,11 @@ function hasClaimedFirstReward(dailyBoard) {
   return Boolean(dailyBoard?.rewardClaimed);
 }
 
+function playHaptic(pattern = 12) {
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+  navigator.vibrate?.(pattern);
+}
+
 function canStartGuestRun() {
   return backend.configured && !backend.session;
 }
@@ -514,6 +519,12 @@ function getPrestigeWinClass(card, won) {
   return `prestige-winner rarity-${String(card.rarity || "").toLowerCase()}`;
 }
 
+function getRecommendedBattleStat(card) {
+  return stats.reduce((best, stat) => (
+    getEffectiveStatValue(card, stat.key) > getEffectiveStatValue(card, best.key) ? stat : best
+  ), stats[0]);
+}
+
 function clampPercent(value) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
@@ -684,10 +695,46 @@ function renderJourneyTrack(track) {
   return `<article class="pvx-journey-track"><div><small>${escapeHtml(track.label)}</small><strong>${escapeHtml(track.progressLabel)}</strong></div><div class="pvx-progress"><i style="width:${track.percent}%"></i></div><p>${escapeHtml(track.reward)}</p></article>`;
 }
 
+function getDailyTaskAction(task) {
+  const soloTask = task.group === "soloWins" || task.group === "soloBattles";
+  return soloTask
+    ? { action: "go-battle", label: "Play solo" }
+    : { action: "go-shop", label: "Open packs" };
+}
+
 function renderDailyTask(task) {
-  const action = task.group === "soloWins" || task.group === "soloBattles" ? "go-battle" : "go-shop";
-  const actionLabel = task.group === "soloWins" || task.group === "soloBattles" ? "Play solo" : "Open packs";
-  return `<article class="pvx-daily-task ${task.complete ? "complete" : ""}"><div class="pvx-daily-task-head"><span>${escapeHtml(task.icon)}</span><div><small>${escapeHtml(task.title)}</small><p>${escapeHtml(task.description)}</p></div><strong>${task.complete ? "Done" : `${task.progress}/${task.goal}`}</strong></div><div class="pvx-progress"><i style="width:${task.percent}%"></i></div>${task.complete ? "" : `<button class="pvx-daily-task-action" data-action="${action}">${actionLabel}<i>→</i></button>`}</article>`;
+  const taskAction = getDailyTaskAction(task);
+  return `<article class="pvx-daily-task ${task.complete ? "complete" : ""}"><div class="pvx-daily-task-head"><span>${escapeHtml(task.icon)}</span><div><small>${escapeHtml(task.title)}</small><p>${escapeHtml(task.description)}</p></div><strong>${task.complete ? "Done" : `${task.progress}/${task.goal}`}</strong></div><div class="pvx-progress"><i style="width:${task.percent}%"></i></div>${task.complete ? "" : `<button class="pvx-daily-task-action" data-action="${taskAction.action}">${escapeHtml(taskAction.label)}<i>→</i></button>`}</article>`;
+}
+
+function renderStreakCalendar(streak, rewardClaimed) {
+  const today = new Date();
+  const activeDays = Math.min(Math.max(0, streak), 7);
+  const endsToday = rewardClaimed;
+  const firstActiveIndex = 7 - activeDays - (endsToday ? 0 : 1);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+    const isToday = index === 6;
+    const complete = activeDays > 0 && index >= Math.max(0, firstActiveIndex) && index < (endsToday ? 7 : 6);
+    return `<li class="${complete ? "complete" : ""} ${isToday ? "today" : ""}" aria-label="${date.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}${complete ? ", streak secured" : ""}"><small>${date.toLocaleDateString(undefined, { weekday: "narrow" })}</small><b>${complete ? "✓" : date.getDate()}</b></li>`;
+  }).join("");
+  const label = streak ? `${streak} day run` : "Start your run";
+  const note = rewardClaimed ? "Today is secured." : "Claim today’s drop to extend it.";
+  return `<section class="pvx-streak-calendar" aria-label="Daily streak calendar"><header><span>Streak path</span><strong>♨ ${label}</strong></header><ol>${days}</ol><p>${note}</p></section>`;
+}
+
+function getDailyNextAction(dailyBoard) {
+  if (dailyBoard.rewardClaimed) {
+    return { eyebrow: "Today complete", title: "Your ritual is banked", copy: "Your reward is safely in the vault. Explore the new pull or return after the refresh.", action: "go-vault", label: "Inspect vault" };
+  }
+  if (dailyBoard.canClaim) {
+    return { eyebrow: "Board cleared", title: "Claim your daily drop", copy: "All four missions are complete. Finish the loop with today’s bonus card and coins.", action: "claim-daily", label: "Claim reward" };
+  }
+  const nextTask = dailyBoard.tasks.find((task) => !task.complete);
+  if (!nextTask) return { eyebrow: "Daily Ops", title: "Keep your momentum", copy: "Your next reward is being prepared.", action: "go-home", label: "Back home" };
+  const taskAction = getDailyTaskAction(nextTask);
+  return { eyebrow: "Recommended next", title: nextTask.title, copy: nextTask.description, action: taskAction.action, label: taskAction.label };
 }
 
 function renderSectorSnapshot(sector) {
@@ -882,6 +929,7 @@ function renderDailyOps() {
   const rewardCard = dailyBoard.rewardCard;
   const remaining = dailyBoard.totalTasks - dailyBoard.completedCount;
   const streak = Number(dailyBoard.streak || backend.profile?.daily_streak || 0);
+  const nextAction = getDailyNextAction(dailyBoard);
   const dailyRewardCopy = dailyBoard.rewardClaimed
     ? "Today's reward is safely in your vault. A fresh mission board arrives at the next reset."
     : dailyBoard.rewardLocked
@@ -904,10 +952,12 @@ function renderDailyOps() {
       <div class="pvx-daily-page-layout">
         <section class="pvx-daily-missions">
           <div class="pvx-daily-section-label"><span>Today’s challenges</span><div><small class="pvx-daily-streak">♨ ${streak} day streak</small><small>${dailyBoard.completedCount === dailyBoard.totalTasks ? "Board complete" : "Keep going"}</small></div></div>
+          <section class="pvx-daily-next ${dailyBoard.canClaim ? "ready" : ""} ${dailyBoard.rewardClaimed ? "claimed" : ""}" aria-live="polite"><div><small>${escapeHtml(nextAction.eyebrow)}</small><h2>${escapeHtml(nextAction.title)}</h2><p>${escapeHtml(nextAction.copy)}</p></div><button data-action="${nextAction.action}">${escapeHtml(nextAction.label)} <i>→</i></button></section>
           <div class="pvx-daily-task-grid">${dailyBoard.tasks.map(renderDailyTask).join("")}</div>
         </section>
         <aside class="pvx-daily-reward-panel">
           <div class="pvx-daily-reward-copy"><small>Today’s drop</small><h3>${rewardCard ? escapeHtml(rewardCard.name) : "Bonus reward"}</h3><p>${escapeHtml(dailyRewardCopy)}</p></div>
+          ${renderStreakCalendar(streak, dailyBoard.rewardClaimed)}
           ${rewardCard ? `<button class="pvx-daily-reward-card" data-action="preview-card" data-card-id="${rewardCard.id}" aria-label="Preview ${escapeHtml(rewardCard.name)}">${renderCardImage(rewardCard)}<span><small>${escapeHtml(rewardCard.rarity)}</small><b>${escapeHtml(rewardCard.name)}</b><em>${escapeHtml(rewardCard.element)}</em></span></button>` : ""}
           <div class="pvx-daily-loot"><span>Bonus card</span><strong>◈ ${dailyBoard.coinsReward}</strong><small>Coins included</small></div>
           <button class="pvx-primary" data-action="claim-daily" ${dailyBoard.canClaim ? "" : "disabled"}>${dailyBoard.rewardClaimed ? "Collected" : dailyBoard.rewardLocked ? "Sign in to claim" : dailyBoard.canClaim ? "Claim daily drop" : "Finish daily challenges"}<i>→</i></button>
@@ -975,13 +1025,16 @@ function renderSoloBattle() {
   const selected = gameState.selectedStat;
   const result = gameState.roundResult;
   const dailyBoard = getActiveDailyBoard();
+  const recommendedStat = getRecommendedBattleStat(gameState.playerCard);
+  const outcomeLabel = gameState.winner === "player" ? "Round won" : gameState.winner === "computer" ? "Round lost" : gameState.winner === "draw" ? "Round drawn" : "Awaiting your move";
   const tutorialBanner = !hasTutorialWin()
     ? {
         eyebrow: "Rookie tutorial",
         title: "Win 1 round to unlock the first pack",
         copy: "Keep this first battle simple: choose the strongest stat, win the round, then jump straight into your first pack opening.",
-        action: "go-home",
-        button: "Back to home loop",
+        action: "show-info",
+        panel: "howto",
+        button: "How battles work",
       }
     : !hasOpenedFirstPack()
       ? {
@@ -1003,7 +1056,7 @@ function renderSoloBattle() {
         : null;
   const tutorialActionAttr = tutorialBanner?.packId
     ? ` data-pack-id="${escapeHtml(tutorialBanner.packId)}"`
-    : "";
+    : tutorialBanner?.panel ? ` data-panel="${escapeHtml(tutorialBanner.panel)}"` : "";
 
   return renderShell(`
     <section class="pvx-arena">
@@ -1013,8 +1066,8 @@ function renderSoloBattle() {
           ? `<section class="pvx-battle-tutorial"><div><small>${escapeHtml(tutorialBanner.eyebrow)}</small><h2>${escapeHtml(tutorialBanner.title)}</h2><p>${escapeHtml(tutorialBanner.copy)}</p></div><button data-action="${tutorialBanner.action}"${tutorialActionAttr}>${escapeHtml(tutorialBanner.button)}</button></section>`
           : ""
       }
-      <main class="pvx-arena-board"><div class="pvx-arena-sky"></div><div class="pvx-arena-floor"></div><div class="pvx-arena-beam beam-left"></div><div class="pvx-arena-beam beam-right"></div>${renderBattleCard(gameState.playerCard, "Your challenger", false, true)}<section class="pvx-referee"><span><i></i> Arena referee online</span><div class="pvx-vs-core"><b>VS</b><i></i></div><p class="${gameState.winner || ""}">${escapeHtml(gameState.resultMessage)}</p>${selected ? `<div class="pvx-round-values">${renderRoundValue(result?.playerValue ?? getEffectiveStatValue(gameState.playerCard, selected), result?.playerBoost)}<span>${titleCase(selected)}</span>${renderRoundValue(result?.opponentValue ?? getEffectiveStatValue(gameState.computerCard, selected), result?.opponentBoost)}</div>` : `<small>Choose the stat that gives your pup the edge</small>`}</section>${renderBattleCard(gameState.computerCard, "CPU challenger", !gameState.computerRevealed)}</main>
-      <section class="pvx-stat-dock"><div><small>${gameState.computerRevealed ? "Official result" : "Your move"}</small><strong>${gameState.computerRevealed ? titleCase(gameState.winner) : "Select one combat stat"}</strong></div><div class="pvx-stat-grid">${stats.map((stat) => `<button class="${getAbilityBoost(gameState.playerCard, stat.key) ? "has-boost" : ""}" data-action="solo-stat" data-stat="${stat.key}" ${gameState.computerRevealed ? "disabled" : ""}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(gameState.playerCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${gameState.computerRevealed ? `<button class="pvx-next" data-action="next-solo">Next round →</button>` : `<span class="pvx-timer">◷ 20s</span>`}</section>
+      <main class="pvx-arena-board ${gameState.winner ? `result-${gameState.winner}` : ""}"><div class="pvx-arena-sky"></div><div class="pvx-arena-floor"></div><div class="pvx-arena-beam beam-left"></div><div class="pvx-arena-beam beam-right"></div>${renderBattleCard(gameState.playerCard, "Your challenger", false, true)}<section class="pvx-referee" aria-live="polite"><span><i></i> Arena referee online</span><div class="pvx-vs-core"><b>VS</b><i></i></div>${gameState.winner ? `<b class="pvx-round-verdict ${gameState.winner}">${outcomeLabel}</b>` : ""}<p class="${gameState.winner || ""}">${escapeHtml(gameState.resultMessage)}</p>${selected ? `<div class="pvx-round-values">${renderRoundValue(result?.playerValue ?? getEffectiveStatValue(gameState.playerCard, selected), result?.playerBoost)}<span>${titleCase(selected)}</span>${renderRoundValue(result?.opponentValue ?? getEffectiveStatValue(gameState.computerCard, selected), result?.opponentBoost)}</div>` : `<small>Choose the stat that gives your pup the edge</small>`}</section>${renderBattleCard(gameState.computerCard, "CPU challenger", !gameState.computerRevealed)}</main>
+      <section class="pvx-stat-dock"><div><small>${gameState.computerRevealed ? "Official result" : "Your move"}</small><strong>${gameState.computerRevealed ? outcomeLabel : "Select one combat stat"}</strong>${!gameState.computerRevealed && !hasTutorialWin() ? `<p class="pvx-first-battle-coach"><i>✦</i><span><b>Strong opening move</b> ${escapeHtml(recommendedStat.label)} is your highest stat at ${getEffectiveStatValue(gameState.playerCard, recommendedStat.key)}.</span></p>` : ""}</div><div class="pvx-stat-grid">${stats.map((stat) => `<button class="${getAbilityBoost(gameState.playerCard, stat.key) ? "has-boost" : ""} ${!hasTutorialWin() && stat.key === recommendedStat.key ? "coach" : ""}" data-action="solo-stat" data-stat="${stat.key}" ${gameState.computerRevealed ? "disabled" : ""}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(gameState.playerCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${gameState.computerRevealed ? `<button class="pvx-next" data-action="next-solo">Next round →</button>` : `<span class="pvx-timer">◷ 20s</span>`}</section>
     </section>`, "battle");
 }
 
@@ -1116,9 +1169,10 @@ function renderPackOverlay() {
   if (!packOverlay) return "";
   const pack = packs.find((item) => item.id === packOverlay.packId);
   if (!pack) return "";
-  if (packOverlay.phase === "opening") return `<section class="pvx-pack-overlay ${pack.themeClass}" aria-live="polite"><div class="pvx-opening-stars"></div><div class="pvx-opening-ring ring-one"></div><div class="pvx-opening-ring ring-two"></div><p class="pvx-eyebrow"><i></i> ${escapeHtml(pack.name)}</p><h1>COSMIC <span>UNSEALING</span></h1><div class="pvx-opening-pack"><div class="pvx-opening-lid"></div><div class="pvx-opening-body"><span>${pack.icon}</span><i></i></div><div class="pvx-opening-energy"></div></div><p>Charging the reveal chamber…</p><button data-action="skip-pack">Reveal now</button></section>`;
+  if (packOverlay.phase === "opening") return `<section class="pvx-pack-overlay ${pack.themeClass}" aria-live="polite"><div class="pvx-opening-stars"></div><div class="pvx-opening-ring ring-one"></div><div class="pvx-opening-ring ring-two"></div><p class="pvx-eyebrow"><i></i> ${escapeHtml(pack.name)}</p><h1>COSMIC <span>UNSEALING</span></h1><div class="pvx-opening-pack"><div class="pvx-opening-lid"></div><div class="pvx-opening-body"><span>${pack.icon}</span><i></i></div><div class="pvx-opening-energy"></div></div><div class="pvx-opening-status"><span><i></i></span><b>Securing your pull</b><small>Coins are charged once. Your cards are next.</small></div><button data-action="skip-pack">Reveal now</button></section>`;
   const pulls = packOverlay.cards || [];
-  return `<section class="pvx-pack-overlay reveal ${pack.themeClass}" aria-live="polite"><div class="pvx-opening-stars"></div><p class="pvx-eyebrow"><i></i> Pack unsealed</p><h1>YOUR NEW <span>PUPS</span></h1><p>Reveal each card to send it into your Collection Vault.</p><div class="pvx-reveal-grid">${pulls.map((card, index) => `<button class="pvx-reveal-card ${index < revealedPackCards ? "revealed" : ""}" style="--delay:${index * .13}s" data-action="reveal-pack-card" data-index="${index}" ${index > revealedPackCards ? "disabled" : ""}><div class="pvx-reveal-inner"><div class="pvx-reveal-back"><span>PV</span><b>?</b><small>Tap to reveal</small></div><div class="pvx-reveal-front">${renderCardImage(card)}<div><small>${escapeHtml(card.rarity)}</small><h2>${escapeHtml(card.name)}</h2><p>${escapeHtml(card.element)}</p></div></div></div></button>`).join("")}</div><div class="pvx-reveal-actions">${revealedPackCards < pulls.length ? `<button data-action="reveal-all">Reveal all</button>` : `<button class="pvx-primary" data-action="finish-reveal">Open Collection Vault →</button>`}<button data-action="close-pack">Back to shop</button></div></section>`;
+  const allRevealed = pulls.length > 0 && revealedPackCards >= pulls.length;
+  return `<section class="pvx-pack-overlay reveal ${pack.themeClass}" aria-live="polite"><div class="pvx-opening-stars"></div><p class="pvx-eyebrow"><i></i> Pack unsealed</p><h1>YOUR NEW <span>PUPS</span></h1><p class="pvx-reveal-status"><b>${allRevealed ? "Vault updated" : `${revealedPackCards + 1} of ${pulls.length} ready to reveal`}</b><span>${allRevealed ? "Every pull is safely in your collection." : "Tap the next card, or reveal the full set."}</span></p><div class="pvx-reveal-grid ${allRevealed ? "complete" : ""}">${pulls.map((card, index) => `<button class="pvx-reveal-card ${index < revealedPackCards ? "revealed" : ""}" style="--delay:${index * .13}s" data-action="reveal-pack-card" data-index="${index}" ${index > revealedPackCards ? "disabled" : ""}><div class="pvx-reveal-inner"><div class="pvx-reveal-back"><span>PV</span><b>?</b><small>Tap to reveal</small></div><div class="pvx-reveal-front">${renderCardImage(card)}<div><small>${escapeHtml(card.rarity)}</small><h2>${escapeHtml(card.name)}</h2><p>${escapeHtml(card.element)}</p></div></div></div></button>`).join("")}</div><div class="pvx-reveal-actions">${!allRevealed ? `<button data-action="reveal-all">Reveal all</button>` : `<button class="pvx-primary" data-action="finish-reveal">Open Collection Vault →</button>`}<button data-action="close-pack">Back to shop</button></div></section>`;
 }
 
 function renderApp() {
@@ -1330,12 +1384,12 @@ async function handleClick(event) {
     renderApp();
     return notice(result.message || result.error || "Daily drop updated.");
   }
-  if (action === "skip-pack") { clearTimeout(packTimer); return finishPackAnimation(); }
-  if (action === "reveal-pack-card") { const index = Number(target.dataset.index); if (index === revealedPackCards) revealedPackCards += 1; return renderApp(); }
-  if (action === "reveal-all") { revealedPackCards = packOverlay?.cards?.length || 0; return renderApp(); }
-  if (action === "finish-reveal") { packOverlay = null; return go("collection"); }
+  if (action === "skip-pack") { playHaptic([10, 35, 18]); clearTimeout(packTimer); return finishPackAnimation(); }
+  if (action === "reveal-pack-card") { const index = Number(target.dataset.index); if (index === revealedPackCards) { revealedPackCards += 1; playHaptic(revealedPackCards === packOverlay?.cards?.length ? [15, 45, 28] : 12); } return renderApp(); }
+  if (action === "reveal-all") { revealedPackCards = packOverlay?.cards?.length || 0; playHaptic([12, 35, 12]); return renderApp(); }
+  if (action === "finish-reveal") { playHaptic([18, 35, 28]); packOverlay = null; return go("collection"); }
   if (action === "close-pack") { packOverlay = null; return renderApp(); }
-  if (action === "solo-stat") { chooseBattleStat(target.dataset.stat); if (gameState.winner === "player" && gameState.playerWins === 1) trackEvent("first_battle_won"); return renderApp(); }
+  if (action === "solo-stat") { chooseBattleStat(target.dataset.stat); if (gameState.winner === "player") playHaptic([18, 40, 28]); else if (gameState.winner === "computer") playHaptic(35); else playHaptic([10, 28, 10]); if (gameState.winner === "player" && gameState.playerWins === 1) trackEvent("first_battle_won"); return renderApp(); }
   if (action === "next-solo") { startComputerBattle(); return renderApp(); }
   if (action === "reset-solo") { resetGameStats(); startComputerBattle(); return renderApp(); }
   if (action === "online-home") { await removeArenaSubscriptions(); openArenaLeague(); return renderApp(); }
