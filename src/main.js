@@ -674,9 +674,8 @@ function renderCoreActionCard(action) {
       </div>
       <div class="pvx-core-action-meta">
         <strong>${escapeHtml(action.meta)}</strong>
-        <button class="${action.featured ? "pvx-primary" : ""}" data-action="${action.action}"${packAttr}>
-          ${escapeHtml(action.button)}
-          ${action.featured ? "<i>→</i>" : ""}
+        <button class="pvx-core-action-cta ${action.featured ? "featured" : ""}" data-action="${action.action}"${packAttr}>
+          <span>${escapeHtml(action.button)}</span><i>→</i>
         </button>
       </div>
     </article>
@@ -751,59 +750,46 @@ function renderHome() {
   const rewardCard = dailyBoard.rewardCard;
   const spotlightCard = rewardCard || showcase[1] || cards[0] || null;
   const playConfig = getPrimaryPlayConfig();
-  const heroPrimaryAction = canStartGuestRun()
-    ? {
-        action: "start-guest",
-        label: "Start guest run",
-        kicker: "Instant account",
-      }
-    : {
-        action: "go-play",
-        label: playConfig.title,
-        kicker: playConfig.tag,
-      };
-  const heroSecondaryAction = canStartGuestRun()
-    ? {
-        action: "go-online",
-        label: "Create synced account",
-      }
-    : {
-        action: dailyBoard.canClaim ? "claim-daily" : "go-daily",
-        label: dailyBoard.canClaim ? "Claim today's reward" : "Open daily ops",
-      };
+  const heroPrimaryAction = !hasTutorialWin()
+    ? { action: "go-battle", label: "Start first battle", kicker: "No account needed" }
+    : { action: "go-play", label: playConfig.title, kicker: playConfig.tag };
+  const heroSecondaryAction = {
+    action: dailyBoard.canClaim ? "claim-daily" : "go-daily",
+    label: dailyBoard.canClaim ? "Claim today's reward" : "View daily ops",
+  };
   const dailyRewardCopy = dailyBoard.rewardClaimed
     ? "Today's reward is already banked. A fresh four-mission board rotates in at the next reset."
     : dailyBoard.rewardLocked
       ? "Signed-in daily drops pay out from the protected progression service."
       : dailyBoard.canClaim
-        ? "Mission board cleared. Claim the live reward now for one bonus card and 24 coins."
-        : `${dailyBoard.totalTasks - dailyBoard.completedCount} mission${dailyBoard.totalTasks - dailyBoard.completedCount === 1 ? "" : "s"} left before today's reward unlocks.`;
+        ? "The board is clear. Claim today’s bonus card and 24 coins."
+        : `${dailyBoard.totalTasks - dailyBoard.completedCount} mission${dailyBoard.totalTasks - dailyBoard.completedCount === 1 ? "" : "s"} remain before today’s reward unlocks.`;
   const coreActions = [
     {
       icon: "⚔",
       kicker: "Play",
-      title: canStartGuestRun() ? "Start the run" : playConfig.title,
-      copy: canStartGuestRun()
-        ? "Create a guest player instantly, then jump straight into the tutorial battle."
+      title: !hasTutorialWin() ? "Enter the arena" : playConfig.title,
+      copy: !hasTutorialWin()
+        ? "Start a fast tutorial match, choose your strongest stat, and take your first win."
         : playConfig.copy,
-      meta: canStartGuestRun()
-        ? "Guest-safe start"
+      meta: !hasTutorialWin()
+        ? "Play instantly"
         : hasTutorialWin()
           ? `${gameState.playerWins} solo win${gameState.playerWins === 1 ? "" : "s"}`
           : "1 round to clear",
-      action: canStartGuestRun() ? "start-guest" : "go-play",
-      button: canStartGuestRun() ? "Start guest run" : "Play now",
+      action: !hasTutorialWin() ? "go-battle" : "go-play",
+      button: !hasTutorialWin() ? "Start battle" : "Play now",
       featured: true,
     },
     {
       icon: "✦",
       kicker: "Daily Ops",
-      title: dailyBoard.canClaim ? "Reward ready" : `${dailyBoard.completedCount}/${dailyBoard.totalTasks} missions`,
+      title: dailyBoard.canClaim ? "Today’s drop is ready" : `${dailyBoard.completedCount}/${dailyBoard.totalTasks} missions`,
       copy: dailyBoard.rewardClaimed
         ? "Today's drop is banked. A fresh four-task board rotates at the next reset."
         : dailyBoard.canClaim
           ? "All four tasks are clear. Claim the bonus card and 24 coins now."
-          : "Keep the session tight: one board, one reward, one reason to come back tomorrow.",
+          : "Four focused challenges. One premium drop. A reason to return tomorrow.",
       meta: dailyBoard.rewardClaimed
         ? "Reward claimed"
         : dailyBoard.canClaim
@@ -815,10 +801,10 @@ function renderHome() {
     {
       icon: "◇",
       kicker: "Vault",
-      title: hasOpenedFirstPack() ? "Inspect your collection" : "Unlock the first cards",
+      title: hasOpenedFirstPack() ? "Explore your vault" : "Unlock your first cards",
       copy: hasOpenedFirstPack()
-        ? "Every pull lives here, with duplicates, rarity, and deck-building pressure in one place."
-        : "Open a starter pack first so your vault has real cards to build around.",
+        ? "Every pull, rarity, and duplicate—ready when it’s time to build your next edge."
+        : "Open a starter pack to begin building a collection with real tactical options.",
       meta: `${getCollectionProgress().uniqueOwned}/${getCollectionProgress().totalCards} discovered`,
       action: hasOpenedFirstPack() ? "go-vault" : "open-pack",
       button: hasOpenedFirstPack() ? "Open vault" : "Open starter pack",
@@ -831,10 +817,10 @@ function renderHome() {
       <div class="pvx-home-aurora"></div><div class="pvx-home-orbit orbit-a"></div><div class="pvx-home-orbit orbit-b"></div>
       <section class="pvx-home-hero">
         <div class="pvx-hero-copy">
-          <p class="pvx-eyebrow"><i></i> Free starter run</p>
+          <p class="pvx-eyebrow"><i></i> Your first match is ready</p>
           <h1><span>NEON</span><em>BATTLES</em></h1>
-          <p class="pvx-hero-text">A crisp collectible card battler built around fast rounds, bright pulls, and a daily ritual worth coming back for.</p>
-          <div class="pvx-home-badges"><span>Fast 3-minute runs</span><span>Daily bonus card + 24 coins</span></div>
+          <p class="pvx-hero-text">Choose a stat. Win the round. Build your collection. PupVerse delivers fast, focused card battles with a rewarding daily rhythm.</p>
+          <div class="pvx-home-badges"><span>Fast three-minute battles</span><span>Play instantly</span><span>Daily card + 24 coins</span></div>
           <div class="pvx-hero-actions"><button class="pvx-primary" data-action="${heroPrimaryAction.action}"><span>${escapeHtml(heroPrimaryAction.kicker)}</span><b>${escapeHtml(heroPrimaryAction.label)}</b><i>→</i></button><button class="pvx-secondary" data-action="${heroSecondaryAction.action}"><span>✦</span><b>${escapeHtml(heroSecondaryAction.label)}</b></button></div>
           <div class="pvx-home-level"><small>Player level</small><strong>${level}</strong><span>Keep your streak moving</span></div>
         </div>
@@ -876,7 +862,7 @@ function renderDailyOps() {
         <div>
           <p class="pvx-eyebrow"><i></i> Your daily ritual</p>
           <h1>DAILY <span>OPS</span></h1>
-          <p>Four focused challenges, one premium drop. Finish the board at your own pace before the next refresh.</p>
+          <p>Four focused challenges. One premium drop. Complete the board before the next refresh and keep your streak alive.</p>
         </div>
         <div class="pvx-daily-reset"><small>Next refresh</small><strong>${dailyBoard.refreshesIn}</strong><span>${dailyBoard.completedCount}/${dailyBoard.totalTasks} complete</span></div>
       </header>
