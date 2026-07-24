@@ -115,6 +115,7 @@ let revealedPackCards = 0;
 let packOpeningRequestInFlight = false;
 let activeInfoPanel = null;
 let onlineStatus = navigator.onLine;
+let deferredInstallPrompt = null;
 const ONBOARDING_STORAGE_KEY = "pupverse-beta-onboarding-dismissed";
 const FEEDBACK_URL = "https://github.com/McauleeMaddison/pupverse/issues/new?title=PupVerse%20beta%20feedback";
 const RANKED_BETA_ENABLED = false;
@@ -399,7 +400,7 @@ function renderInfoPanel() {
 }
 
 function renderBetaFooter() {
-  return `<footer class="pvx-beta-footer"><div><span class="pvx-beta-pill">Public beta</span><p>${onlineStatus ? "Play instantly · Progress may change during beta" : "You’re offline · Local play is still available"}</p></div><nav aria-label="Beta information"><button data-action="show-info" data-panel="howto">How to play</button><button data-action="show-info" data-panel="install">Install</button><button data-action="show-info" data-panel="safety">Safety</button><button data-action="show-info" data-panel="privacy">Privacy</button><button data-action="show-info" data-panel="terms">Terms</button><button data-action="open-feedback">Feedback ↗</button></nav></footer>`;
+  return `<footer class="pvx-beta-footer"><div><span class="pvx-beta-pill">Public beta</span><p>${onlineStatus ? "Play instantly · Progress may change during beta" : "You’re offline · Local play is still available"}</p></div><nav aria-label="Beta information"><button data-action="show-info" data-panel="howto">How to play</button><button data-action="install-app">${deferredInstallPrompt ? "Install app" : "Install"}</button><button data-action="show-info" data-panel="safety">Safety</button><button data-action="show-info" data-panel="privacy">Privacy</button><button data-action="show-info" data-panel="terms">Terms</button><button data-action="open-feedback">Feedback ↗</button></nav></footer>`;
 }
 
 function renderShell(content, active = gameState.mode) {
@@ -1242,6 +1243,14 @@ async function handleClick(event) {
   const action = target.dataset.action;
   if (action === "show-info") { activeInfoPanel = target.dataset.panel; return renderApp(); }
   if (action === "close-info") { activeInfoPanel = null; return renderApp(); }
+  if (action === "install-app") {
+    if (!deferredInstallPrompt) { activeInfoPanel = "install"; return renderApp(); }
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    trackEvent("app_install_prompt", { accepted: choice.outcome === "accepted" });
+    deferredInstallPrompt = null;
+    return renderApp();
+  }
   if (action === "open-feedback") { trackEvent("feedback_opened"); window.open(FEEDBACK_URL, "_blank", "noopener,noreferrer"); return; }
   if (action === "dismiss-onboarding") { try { window.localStorage?.setItem(ONBOARDING_STORAGE_KEY, "true"); } catch {} return renderApp(); }
   if (action === "go-home") {
@@ -1457,6 +1466,12 @@ function trackSessionStart() {
 
 window.addEventListener("online", () => { onlineStatus = true; renderApp(); notice("You’re back online. Synced features are available again."); });
 window.addEventListener("offline", () => { onlineStatus = false; renderApp(); notice("You’re offline. Solo play remains available; synced features will retry when you reconnect."); });
+window.addEventListener("beforeinstallprompt", (event) => { event.preventDefault(); deferredInstallPrompt = event; renderApp(); });
+window.addEventListener("appinstalled", () => { deferredInstallPrompt = null; trackEvent("app_installed"); renderApp(); notice("PupVerse is installed. See you in the arena."); });
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
 
 trackSessionStart();
 renderApp();
