@@ -1555,6 +1555,20 @@ body.pvx-modal-open { overflow: hidden; }
   .pvx-flip-inner { transition-duration: .01ms; }
 }
 
+@media (pointer: coarse) {
+  .pvx-core-action-cta,
+  .pvx-daily-task-action,
+  .pvx-beta-footer button,
+  .pvx-filterbar button,
+  .pvx-battle-tutorial button,
+  .pvx-online-note button,
+  .pvx-next,
+  .pvx-arena-head > button { min-height: 44px; }
+
+  .pvx-beta-footer button { padding-inline: 7px; }
+  .pvx-daily-task-action { padding-inline: 12px; }
+}
+
 /* Final responsive polish: keep the reveal modal contained on narrow screens. */
 .pvx-card-viewer {
   overflow-x: hidden;

@@ -390,6 +390,8 @@ function renderInfoPanel() {
     safety: { eyebrow: "Player safety", title: "Play smart. Stay kind.", copy: "PupVerse is designed for players aged 13+. Do not share personal details, passwords, or private room codes publicly. Use the in-match Report and Block controls if another player breaks the rules." },
     privacy: { eyebrow: "Privacy", title: "Only what the game needs", copy: "Account details are used to save your progress and keep matches secure. Product analytics use anonymous event names, not personal details. Contact support to request help with your account." },
     terms: { eyebrow: "Terms of play", title: "Keep the arena fair", copy: "No cheating, harassment, account sharing, or attempts to manipulate rewards or rankings. Beta content is virtual only, has no cash value, and may change as the game evolves." },
+    howto: { eyebrow: "How to play", title: "Choose. Compare. Win.", copy: "In Solo Battle, choose one stat from your pup’s card. The higher value wins the round. Win a battle, open packs to grow your Vault, then return to Daily Ops for a bonus card and coins." },
+    install: { eyebrow: "Install PupVerse", title: /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "Add it to your iPhone" : /Android/i.test(navigator.userAgent) ? "Add it to your Android" : "Install on mobile", copy: /iPhone|iPad|iPod/i.test(navigator.userAgent) ? "In Safari, tap Share, then choose Add to Home Screen. PupVerse will launch like an app from your home screen." : /Android/i.test(navigator.userAgent) ? "In Chrome, open the browser menu and choose Install app or Add to Home screen. You can then launch PupVerse from your app drawer." : "Open PupVerse on Safari for iPhone or Chrome for Android, then use the browser menu to add it to your home screen." },
   };
   const panel = panels[activeInfoPanel];
   if (!panel) return "";
@@ -397,7 +399,7 @@ function renderInfoPanel() {
 }
 
 function renderBetaFooter() {
-  return `<footer class="pvx-beta-footer"><div><span class="pvx-beta-pill">Public beta</span><p>${onlineStatus ? "Play instantly · Progress may change during beta" : "You’re offline · Local play is still available"}</p></div><nav aria-label="Beta information"><button data-action="show-info" data-panel="beta">About beta</button><button data-action="show-info" data-panel="safety">Safety</button><button data-action="show-info" data-panel="privacy">Privacy</button><button data-action="show-info" data-panel="terms">Terms</button><button data-action="open-feedback">Feedback ↗</button></nav></footer>`;
+  return `<footer class="pvx-beta-footer"><div><span class="pvx-beta-pill">Public beta</span><p>${onlineStatus ? "Play instantly · Progress may change during beta" : "You’re offline · Local play is still available"}</p></div><nav aria-label="Beta information"><button data-action="show-info" data-panel="howto">How to play</button><button data-action="show-info" data-panel="install">Install</button><button data-action="show-info" data-panel="safety">Safety</button><button data-action="show-info" data-panel="privacy">Privacy</button><button data-action="show-info" data-panel="terms">Terms</button><button data-action="open-feedback">Feedback ↗</button></nav></footer>`;
 }
 
 function renderShell(content, active = gameState.mode) {
@@ -1253,6 +1255,7 @@ async function handleClick(event) {
   if (action === "go-play") { if (!hasTutorialWin()) trackEvent("first_battle_started"); return startPrimaryPlayFlow(); }
   if (action === "go-daily" || action === "focus-daily") return go("daily");
   if (action === "start-guest") {
+    if (!onlineStatus) return notice("You’re offline. Start a Solo Battle now and connect later to save your run.");
     try {
       return await startGuestRun();
     } catch (error) {
@@ -1277,6 +1280,7 @@ async function handleClick(event) {
     return;
   }
   if (action === "open-pack") {
+    if (backend.configured && backend.session && !onlineStatus) return notice("You’re offline. Reconnect before opening a synced pack so your coins stay protected.");
     if (!startPackOpening(target.dataset.packId)) return renderApp();
     packOverlay = { phase: "opening", packId: target.dataset.packId, requestId: crypto.randomUUID() };
     renderApp();
@@ -1286,6 +1290,7 @@ async function handleClick(event) {
   }
   if (action === "claim-daily") {
     if (backend.configured && backend.session) {
+      if (!onlineStatus) return notice("You’re offline. Reconnect to claim your protected daily reward.");
       try {
         const result = await claimRemoteDailyReward(crypto.randomUUID());
         const rewardCard = cards.find((card) => card.id === result.reward_card_id) || null;
@@ -1328,6 +1333,7 @@ async function handleClick(event) {
   if (action === "online-mode") {
     const mode = target.dataset.mode;
     if (mode === "ranked" && !RANKED_BETA_ENABLED) return notice("Ranked opens after the public-beta verification pass.");
+    if (backend.configured && backend.session && !onlineStatus) return notice("You’re offline. Reconnect before starting matchmaking.");
     if (mode === "friend") { gameState.arenaStatus = "friend-select"; return renderApp(); }
     try { return backend.configured && backend.session ? await beginRemoteQueue(mode) : beginLocalQueue(mode); }
     catch (error) { gameState.arenaStatus = "hub"; renderApp(); return notice(error.message); }
@@ -1416,6 +1422,7 @@ async function handleClick(event) {
   }
   if (action === "auth-submit") {
     event.preventDefault();
+    if (!onlineStatus) { backend.error = "You’re offline. Reconnect before signing in or creating an account."; return renderApp(); }
     backend.error = ""; backend.message = ""; target.disabled = true;
     try {
       if (backend.authMode === "signup") trackEvent("account_signup_started");
