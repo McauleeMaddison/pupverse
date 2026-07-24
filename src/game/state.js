@@ -160,6 +160,8 @@ function createDefaultSave() {
     onlineWins: 18,
     rankedWins: 11,
     totalPacksOpened: 0,
+    dailyStreak: 0,
+    lastDailyClaimDate: null,
     dailyOps: null,
   };
 }
@@ -692,6 +694,7 @@ export function getDailyMissionBoard() {
     coinsReward: DAILY_COIN_REWARD,
     refreshesIn: formatResetCountdown(getNextDailyResetAt(dailyOps) - Date.now()),
     claimedAt: dailyOps.claimedAt,
+    streak: Number(gameState.dailyStreak) || 0,
   };
 }
 
@@ -729,6 +732,13 @@ export function claimDailyMissionReward() {
 
   gameState.dailyOps.rewardClaimed = true;
   gameState.dailyOps.claimedAt = new Date().toISOString();
+  const today = new Date().toISOString().slice(0, 10);
+  const previousClaim = gameState.lastDailyClaimDate;
+  const daysSincePreviousClaim = previousClaim
+    ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${previousClaim}T00:00:00Z`)) / DAY_MS)
+    : null;
+  gameState.dailyStreak = daysSincePreviousClaim === 1 ? (Number(gameState.dailyStreak) || 0) + 1 : 1;
+  gameState.lastDailyClaimDate = today;
   saveGame();
 
   return {

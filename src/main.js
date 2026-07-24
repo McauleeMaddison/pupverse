@@ -389,6 +389,10 @@ function renderShell(content, active = gameState.mode) {
             <span>⌂</span><b>Home</b>
           </button>
 
+          <button class="${active === "daily" ? "active" : ""}" data-action="go-daily">
+            <span>✦</span><b>Daily</b>
+          </button>
+
           <button class="${active === "collection" ? "active" : ""}" data-action="go-vault">
             <span>◇</span><b>Vault</b>
           </button>
@@ -446,7 +450,7 @@ function renderShell(content, active = gameState.mode) {
           <span>⚔</span><b>Play</b>
         </button>
 
-        <button class="${active === "home" ? "active" : ""}" data-action="focus-daily">
+        <button class="${active === "daily" ? "active" : ""}" data-action="go-daily">
           <span>✦</span><b>Daily Ops</b>
         </button>
 
@@ -648,7 +652,9 @@ function renderJourneyTrack(track) {
 }
 
 function renderDailyTask(task) {
-  return `<article class="pvx-daily-task ${task.complete ? "complete" : ""}"><div class="pvx-daily-task-head"><span>${escapeHtml(task.icon)}</span><div><small>${escapeHtml(task.title)}</small><p>${escapeHtml(task.description)}</p></div><strong>${task.complete ? "Done" : `${task.progress}/${task.goal}`}</strong></div><div class="pvx-progress"><i style="width:${task.percent}%"></i></div></article>`;
+  const action = task.group === "soloWins" || task.group === "soloBattles" ? "go-battle" : "go-shop";
+  const actionLabel = task.group === "soloWins" || task.group === "soloBattles" ? "Play solo" : "Open packs";
+  return `<article class="pvx-daily-task ${task.complete ? "complete" : ""}"><div class="pvx-daily-task-head"><span>${escapeHtml(task.icon)}</span><div><small>${escapeHtml(task.title)}</small><p>${escapeHtml(task.description)}</p></div><strong>${task.complete ? "Done" : `${task.progress}/${task.goal}`}</strong></div><div class="pvx-progress"><i style="width:${task.percent}%"></i></div>${task.complete ? "" : `<button class="pvx-daily-task-action" data-action="${action}">${actionLabel}<i>→</i></button>`}</article>`;
 }
 
 function renderSectorSnapshot(sector) {
@@ -740,20 +746,10 @@ function getActiveDailyBoard() {
 
 function renderHome() {
   const showcase = getShowcaseCards();
-  const command = getHomeCommandData();
   const dailyBoard = getActiveDailyBoard();
-  const rookieSteps = getRookieSteps(dailyBoard);
-  const activeRookieStep = getActiveRookieStep(dailyBoard);
-  const rookieCompleteCount = rookieSteps.filter((step) => step.complete).length;
-  const rating = command.rating;
   const level = backend.profile?.level ?? gameState.level;
-  const onlineWins = backend.profile?.online_wins ?? gameState.onlineWins;
-  const recommendedPack = command.recommendedPack?.pack || packs[0];
-  const canAffordRecommended = getCoinBalance() >= (recommendedPack?.cost || 0);
-  const levelProgress = clampPercent((((level - 1) % 10) + 1) * 10);
-  const winProgress = clampPercent(((onlineWins % 10) / 10) * 100 || (onlineWins ? 100 : 0));
   const rewardCard = dailyBoard.rewardCard;
-  const spotlightCard = rewardCard || command.rosterLead || showcase[1] || cards[0] || null;
+  const spotlightCard = rewardCard || showcase[1] || cards[0] || null;
   const playConfig = getPrimaryPlayConfig();
   const heroPrimaryAction = canStartGuestRun()
     ? {
@@ -772,21 +768,9 @@ function renderHome() {
         label: "Create synced account",
       }
     : {
-        action: dailyBoard.canClaim ? "claim-daily" : "focus-daily",
+        action: dailyBoard.canClaim ? "claim-daily" : "go-daily",
         label: dailyBoard.canClaim ? "Claim today's reward" : "Open daily ops",
       };
-  const dailyButtonLabel = dailyBoard.rewardClaimed
-    ? "Reward claimed"
-    : dailyBoard.canClaim
-      ? "Claim reward"
-      : dailyBoard.rewardLocked
-        ? "Reward offline"
-        : "Complete missions";
-  const dailySummaryCopy = dailyBoard.rewardClaimed
-    ? `${rewardCard?.name || "Bonus card"} and 24 coins claimed today.`
-    : dailyBoard.rewardLocked
-      ? "Daily rewards are protected by signed-in progression."
-      : `${dailyBoard.completedCount}/${dailyBoard.totalTasks} missions complete · reset in ${dailyBoard.refreshesIn}`;
   const dailyRewardCopy = dailyBoard.rewardClaimed
     ? "Today's reward is already banked. A fresh four-mission board rotates in at the next reset."
     : dailyBoard.rewardLocked
@@ -794,9 +778,6 @@ function renderHome() {
       : dailyBoard.canClaim
         ? "Mission board cleared. Claim the live reward now for one bonus card and 24 coins."
         : `${dailyBoard.totalTasks - dailyBoard.completedCount} mission${dailyBoard.totalTasks - dailyBoard.completedCount === 1 ? "" : "s"} left before today's reward unlocks.`;
-  const commandSummaryCopy = command.rosterLead
-    ? `${command.rosterLead.name} is anchoring your current build, with the roster leaning into ${PLAYSTYLE_COPY[command.rosterStat.key] || "adaptive pressure"}.`
-    : "Open the first pack, reveal the lead unit, and start shaping a real mobile battle squad.";
   const coreActions = [
     {
       icon: "⚔",
@@ -828,7 +809,7 @@ function renderHome() {
         : dailyBoard.canClaim
           ? "Claim now"
           : `Reset ${dailyBoard.refreshesIn}`,
-      action: dailyBoard.canClaim ? "claim-daily" : "focus-daily",
+      action: dailyBoard.canClaim ? "claim-daily" : "go-daily",
       button: dailyBoard.canClaim ? "Claim reward" : "Open board",
     },
     {
@@ -838,10 +819,10 @@ function renderHome() {
       copy: hasOpenedFirstPack()
         ? "Every pull lives here, with duplicates, rarity, and deck-building pressure in one place."
         : "Open a starter pack first so your vault has real cards to build around.",
-      meta: `${command.progress.uniqueOwned}/${command.progress.totalCards} discovered`,
+      meta: `${getCollectionProgress().uniqueOwned}/${getCollectionProgress().totalCards} discovered`,
       action: hasOpenedFirstPack() ? "go-vault" : "open-pack",
       button: hasOpenedFirstPack() ? "Open vault" : "Open starter pack",
-      packId: hasOpenedFirstPack() ? "" : recommendedPack?.id || "crypto",
+      packId: hasOpenedFirstPack() ? "" : packs[0]?.id || "crypto",
     },
   ];
 
@@ -852,10 +833,10 @@ function renderHome() {
         <div class="pvx-hero-copy">
           <p class="pvx-eyebrow"><i></i> Free starter run</p>
           <h1><span>NEON</span><em>BATTLES</em></h1>
-          <p class="pvx-hero-text">PupVerse is a premium mobile-first collectible card battler. The loop stays simple: win a fast round, open a pack, clear the board, claim the drop, and come back tomorrow.</p>
-          <div class="pvx-home-badges"><span>Fast 3-minute runs</span><span>Daily bonus card + 24 coins</span><span>Guest start, account later</span></div>
+          <p class="pvx-hero-text">A crisp collectible card battler built around fast rounds, bright pulls, and a daily ritual worth coming back for.</p>
+          <div class="pvx-home-badges"><span>Fast 3-minute runs</span><span>Daily bonus card + 24 coins</span></div>
           <div class="pvx-hero-actions"><button class="pvx-primary" data-action="${heroPrimaryAction.action}"><span>${escapeHtml(heroPrimaryAction.kicker)}</span><b>${escapeHtml(heroPrimaryAction.label)}</b><i>→</i></button><button class="pvx-secondary" data-action="${heroSecondaryAction.action}"><span>✦</span><b>${escapeHtml(heroSecondaryAction.label)}</b></button></div>
-          <div class="pvx-micro-stats"><article><small>Player level</small><strong>${level}</strong><i style="--value:${levelProgress}%"></i></article><article><small>Arena wins</small><strong>${onlineWins}</strong><i style="--value:${winProgress}%"></i></article><article><small>League rating</small><strong>${rating}</strong><i style="--value:${getRankProgress(rating)}%"></i></article></div>
+          <div class="pvx-home-level"><small>Player level</small><strong>${level}</strong><span>Keep your streak moving</span></div>
         </div>
         <article class="pvx-home-spotlight">
           <div class="pvx-home-spotlight-copy">
@@ -872,74 +853,47 @@ function renderHome() {
         </article>
       </section>
       <section class="pvx-core-actions">${coreActions.map(renderCoreActionCard).join("")}</section>
-      <section class="pvx-rookie-run">
-        <header>
-          <div>
-            <p class="pvx-eyebrow"><i></i> First 5 minutes</p>
-            <h2>${activeRookieStep ? "ROOKIE RUNWAY" : "STARTER LOOP COMPLETE"}</h2>
-            <p>${escapeHtml(activeRookieStep ? `Stay narrow: finish ${activeRookieStep.label.toLowerCase()} and keep the loop moving.` : "Guest start, first win, first pack, first mission, and first reward are all online. Now optimize for retention.")}</p>
-          </div>
-          <span>${rookieCompleteCount}/${rookieSteps.length}</span>
-        </header>
-        <div class="pvx-rookie-step-list">${rookieSteps.map((step, index) => renderRookieStep(step, index, activeRookieStep?.id === step.id)).join("")}</div>
-      </section>
-      ${renderHomePanel({
-        panelKey: "daily",
-        className: `pvx-daily-ops ${dailyBoard.rewardClaimed ? "claimed" : ""}`,
-        eyebrow: "Mission board",
-        title: "4 daily missions every 24 hours",
-        summary: "Clear the full live board to unlock today's bonus card and 24 coins.",
-        badge: `${dailyBoard.completedCount}/${dailyBoard.totalTasks} done`,
-        content: `
-          <div class="pvx-daily-ops-head">
-            <div class="pvx-daily-reset"><small>Refresh</small><strong>${dailyBoard.refreshesIn}</strong><span>${dailyBoard.completedCount}/${dailyBoard.totalTasks}</span></div>
-          </div>
-          <div class="pvx-daily-ops-layout">
-            <div class="pvx-daily-task-grid">${dailyBoard.tasks.map(renderDailyTask).join("")}</div>
-            <aside class="pvx-daily-reward-panel">
-              <div class="pvx-daily-reward-copy"><small>Daily drop</small><h3>${rewardCard ? escapeHtml(rewardCard.name) : "Bonus reward"}</h3><p>${escapeHtml(dailyRewardCopy)}</p></div>
-              ${rewardCard ? `<button class="pvx-daily-reward-card" data-action="preview-card" data-card-id="${rewardCard.id}" aria-label="Preview ${escapeHtml(rewardCard.name)}">${renderCardImage(rewardCard)}<span><small>${escapeHtml(rewardCard.rarity)}</small><b>${escapeHtml(rewardCard.name)}</b><em>${escapeHtml(rewardCard.element)}</em></span></button>` : ""}
-              <div class="pvx-daily-loot"><span>Bonus card</span><strong>◈ ${dailyBoard.coinsReward}</strong><small>Coins included</small></div>
-              <button class="pvx-primary" data-action="claim-daily" ${dailyBoard.canClaim ? "" : "disabled"}>${dailyBoard.rewardClaimed ? "Collected" : dailyBoard.rewardLocked ? "Local vault only" : dailyBoard.canClaim ? "Claim bonus drop" : "Finish all 4 tasks"}<i>→</i></button>
-            </aside>
-          </div>
-        `,
-      })}
-      ${renderHomePanel({
-        panelKey: "command",
-        className: "pvx-command-panel",
-        eyebrow: "Deck pressure",
-        title: "Collection command",
-        summary: commandSummaryCopy,
-        badge: `${command.progress.percentage}% discovered`,
-        content: `
-          <section class="pvx-command-grid">
-            <article class="pvx-command-card pvx-command-journey">
-              <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Progress path</p><h2>COMMAND JOURNEY</h2></div><span>${command.prestigeCount} prestige</span></div>
-              <div class="pvx-journey-grid">${command.journey.map(renderJourneyTrack).join("")}</div>
-              <div class="pvx-command-actions"><button data-action="go-vault">Inspect vault</button><button data-action="go-online">Push rank</button></div>
-            </article>
-            <article class="pvx-command-card pvx-command-sectors">
-              <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Pack pressure</p><h2>SECTOR RADAR</h2></div><span>${command.sectors.length} zones</span></div>
-              <div class="pvx-sector-mini-grid">${command.sectors.map(renderSectorSnapshot).join("")}</div>
-              <div class="pvx-command-footer"><strong>${escapeHtml(command.rosterStat.label)}</strong><p>Your collection currently leans toward ${escapeHtml(PLAYSTYLE_COPY[command.rosterStat.key] || "adaptive play")}.</p></div>
-            </article>
-            <article class="pvx-command-card pvx-command-intel">
-              <div class="pvx-command-head"><div><p class="pvx-eyebrow"><i></i> Squad report</p><h2>ROSTER CORE</h2></div><span>${command.ownedCards.length} unique</span></div>
-              <div class="pvx-intel-focus">
-                ${command.rosterLead ? `<button class="pvx-intel-card" data-action="preview-card" data-card-id="${command.rosterLead.id}">${renderCardImage(command.rosterLead)}<span><small>Prime unit</small><b>${escapeHtml(command.rosterLead.name)}</b><em>${escapeHtml(command.rosterLead.rarity)} · ${escapeHtml(command.rosterLead.element)}</em></span></button>` : `<div class="pvx-empty"><span>◇</span><h3>No prime unit yet</h3><p>Open a pack to start building your mobile battle roster.</p></div>`}
-                <div class="pvx-intel-copy">
-                  <article><small>Lead playstyle</small><strong>${escapeHtml(titleCase(command.rosterStat.label))}</strong><p>${escapeHtml(PLAYSTYLE_COPY[command.rosterStat.key] || "Balanced combat pressure")}.</p></article>
-                  <article><small>Rarest owned</small><strong>${escapeHtml(command.rarestCard?.name || "None")}</strong><p>${escapeHtml(command.rarestCard ? `${command.rarestCard.rarity} ${command.rarestCard.element}` : "Your first rare pull will surface here.")}</p></article>
-                  <article><small>Suggested breach</small><strong>${escapeHtml(recommendedPack?.name || "CryptoPups Pack")}</strong><p>${escapeHtml(command.liveOps[2]?.copy || "Open the recommended pack to widen your options.")}</p></article>
-                </div>
-              </div>
-              <div class="pvx-command-actions"><button data-action="go-battle">Run solo drill</button><button data-action="open-pack" data-pack-id="${recommendedPack?.id || "crypto"}" ${canAffordRecommended ? "" : "disabled"}>${canAffordRecommended ? "Open target pack" : `Need ${Math.max(0, (recommendedPack?.cost || 0) - (backend.profile?.coins ?? gameState.coins))} more coins`}</button></div>
-            </article>
-          </section>
-        `,
-      })}
     </section>`, "home");
+}
+
+function renderDailyOps() {
+  const dailyBoard = getActiveDailyBoard();
+  const rewardCard = dailyBoard.rewardCard;
+  const remaining = dailyBoard.totalTasks - dailyBoard.completedCount;
+  const streak = Number(dailyBoard.streak || backend.profile?.daily_streak || 0);
+  const dailyRewardCopy = dailyBoard.rewardClaimed
+    ? "Today's reward is safely in your vault. A fresh mission board arrives at the next reset."
+    : dailyBoard.rewardLocked
+      ? "Sign in to protect daily drops and claim them from the progression service."
+      : dailyBoard.canClaim
+        ? "Every mission is complete. Your bonus card and coins are ready to collect."
+        : `${remaining} mission${remaining === 1 ? "" : "s"} left before today's reward unlocks.`;
+
+  return renderShell(`
+    <section class="pvx-daily-page ${dailyBoard.rewardClaimed ? "claimed" : ""}">
+      <div class="pvx-daily-page-glow"></div>
+      <header class="pvx-daily-page-head">
+        <div>
+          <p class="pvx-eyebrow"><i></i> Your daily ritual</p>
+          <h1>DAILY <span>OPS</span></h1>
+          <p>Four focused challenges, one premium drop. Finish the board at your own pace before the next refresh.</p>
+        </div>
+        <div class="pvx-daily-reset"><small>Next refresh</small><strong>${dailyBoard.refreshesIn}</strong><span>${dailyBoard.completedCount}/${dailyBoard.totalTasks} complete</span></div>
+      </header>
+      <div class="pvx-daily-page-layout">
+        <section class="pvx-daily-missions">
+          <div class="pvx-daily-section-label"><span>Today’s challenges</span><div><small class="pvx-daily-streak">♨ ${streak} day streak</small><small>${dailyBoard.completedCount === dailyBoard.totalTasks ? "Board complete" : "Keep going"}</small></div></div>
+          <div class="pvx-daily-task-grid">${dailyBoard.tasks.map(renderDailyTask).join("")}</div>
+        </section>
+        <aside class="pvx-daily-reward-panel">
+          <div class="pvx-daily-reward-copy"><small>Today’s drop</small><h3>${rewardCard ? escapeHtml(rewardCard.name) : "Bonus reward"}</h3><p>${escapeHtml(dailyRewardCopy)}</p></div>
+          ${rewardCard ? `<button class="pvx-daily-reward-card" data-action="preview-card" data-card-id="${rewardCard.id}" aria-label="Preview ${escapeHtml(rewardCard.name)}">${renderCardImage(rewardCard)}<span><small>${escapeHtml(rewardCard.rarity)}</small><b>${escapeHtml(rewardCard.name)}</b><em>${escapeHtml(rewardCard.element)}</em></span></button>` : ""}
+          <div class="pvx-daily-loot"><span>Bonus card</span><strong>◈ ${dailyBoard.coinsReward}</strong><small>Coins included</small></div>
+          <button class="pvx-primary" data-action="claim-daily" ${dailyBoard.canClaim ? "" : "disabled"}>${dailyBoard.rewardClaimed ? "Collected" : dailyBoard.rewardLocked ? "Sign in to claim" : dailyBoard.canClaim ? "Claim daily drop" : "Finish daily challenges"}<i>→</i></button>
+          <button class="pvx-daily-home-link" data-action="go-home">Back home</button>
+        </aside>
+      </div>
+    </section>`, "daily");
 }
 
 function renderPackCard(pack) {
@@ -1158,7 +1112,8 @@ function renderApp() {
     else if (["battle", "remote-battle"].includes(gameState.arenaStatus)) screen = renderOnlineBattle();
     else if (gameState.arenaStatus === "result") screen = backend.remoteMatch ? renderRemoteResult() : renderLocalResult();
     else screen = renderOnlineHub();
-  } else screen = renderHome();
+  } else if (gameState.mode === "daily") screen = renderDailyOps();
+  else screen = renderHome();
   app.innerHTML = `<canvas id="spaceCanvas"></canvas><main class="app-shell">${screen}</main>${renderPackOverlay()}`;
   app.onclick = handleClick;
   app.onsubmit = (event) => {
@@ -1273,7 +1228,7 @@ async function handleClick(event) {
     return go("home");
   }
   if (action === "go-play") return startPrimaryPlayFlow();
-  if (action === "focus-daily") return focusHomeSection("daily", ".pvx-daily-ops");
+  if (action === "go-daily" || action === "focus-daily") return go("daily");
   if (action === "start-guest") {
     try {
       return await startGuestRun();

@@ -1017,6 +1017,46 @@ body.pvx-modal-open { overflow: hidden; }
   justify-self: end;
 }
 
+/* Dedicated Daily Ops */
+.pvx-daily-page {
+  position: relative;
+  min-height: calc(100vh - 126px);
+  padding: clamp(34px, 5vw, 72px);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 86% 6%, rgba(255, 211, 107, .12), transparent 24%),
+    radial-gradient(circle at 7% 90%, rgba(103, 244, 231, .11), transparent 32%);
+}
+.pvx-daily-page-glow { position:absolute; width:540px; aspect-ratio:1; right:-190px; top:-260px; border-radius:50%; background:conic-gradient(transparent,rgba(255,211,107,.18),transparent,rgba(103,244,231,.12)); filter:blur(45px); animation:pvxAurora 24s linear infinite; }
+.pvx-daily-page-head { position:relative; z-index:1; display:flex; align-items:end; justify-content:space-between; gap:24px; max-width:1120px; margin:0 auto 28px; }
+.pvx-daily-page-head h1 { margin:0; font-family:var(--pvx-display),sans-serif; font-size:clamp(3.4rem,7vw,6.6rem); line-height:.8; letter-spacing:.05em; }
+.pvx-daily-page-head h1 span { color:var(--pvx-cyan); text-shadow:0 0 30px rgba(103,244,231,.35); }
+.pvx-daily-page-head > div > p:last-child { max-width:560px; margin:15px 0 0; color:#8290aa; font-size:.72rem; line-height:1.6; }
+.pvx-daily-page .pvx-daily-reset { min-width:175px; padding:16px 18px; border-color:rgba(255,211,107,.16); background:rgba(255,255,255,.045); box-shadow:inset 0 1px rgba(255,255,255,.04),0 16px 36px rgba(0,0,0,.16); }
+.pvx-daily-page .pvx-daily-reset strong { font-family:var(--pvx-display),sans-serif; font-size:1.35rem; }
+.pvx-daily-page-layout { position:relative; z-index:1; display:grid; grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr); gap:18px; max-width:1120px; margin:auto; }
+.pvx-daily-missions { padding:18px; border-radius:22px; background:rgba(8,13,31,.58); border:1px solid rgba(136,172,231,.1); backdrop-filter:blur(14px); }
+.pvx-daily-section-label { display:flex; align-items:center; justify-content:space-between; margin:1px 1px 16px; }
+.pvx-daily-section-label span { font-size:.58rem; font-weight:950; letter-spacing:.14em; text-transform:uppercase; color:#e7ecff; }
+.pvx-daily-section-label > div { display:flex; align-items:center; gap:6px; }
+.pvx-daily-section-label small { padding:5px 8px; border-radius:999px; color:var(--pvx-cyan); font-size:.46rem; font-weight:900; letter-spacing:.08em; text-transform:uppercase; background:rgba(103,244,231,.07); border:1px solid rgba(103,244,231,.12); }
+.pvx-daily-section-label .pvx-daily-streak { color:var(--pvx-gold); background:rgba(255,211,107,.08); border-color:rgba(255,211,107,.14); }
+.pvx-daily-page .pvx-daily-task-grid { grid-template-columns:1fr; gap:10px; }
+.pvx-daily-page .pvx-daily-task { min-height:96px; grid-template-columns:1fr auto; align-items:end; padding:16px; background:rgba(255,255,255,.035); }
+.pvx-daily-page .pvx-daily-task-head { grid-template-columns:32px 1fr auto; align-items:center; }
+.pvx-daily-page .pvx-daily-task-head > span { width:32px; border-radius:11px; }
+.pvx-daily-page .pvx-daily-task-head strong { font-size:.82rem; }
+.pvx-daily-page .pvx-daily-task .pvx-progress { grid-column:1 / -1; }
+.pvx-daily-task-action { min-height:31px; display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; color:var(--pvx-cyan); font-size:.5rem; background:rgba(103,244,231,.06); border:1px solid rgba(103,244,231,.12); }
+.pvx-daily-task-action i { font-style:normal; }
+.pvx-daily-page .pvx-daily-reward-panel { min-height:100%; align-content:start; padding:20px; border-radius:22px; background:linear-gradient(160deg,rgba(23,30,57,.74),rgba(7,11,27,.88)); box-shadow:inset 0 1px rgba(255,255,255,.045),0 20px 50px rgba(0,0,0,.16); }
+.pvx-daily-page .pvx-daily-reward-copy h3 { font-family:var(--pvx-display),sans-serif; font-size:1.45rem; letter-spacing:.03em; }
+.pvx-daily-home-link { min-height:38px; color:#76849e; font-size:.55rem; background:transparent; }
+.pvx-home-level { display:flex; align-items:center; gap:8px; margin-top:22px; color:#7c8aa5; font-size:.55rem; }
+.pvx-home-level small { color:#64728d; font-weight:900; letter-spacing:.1em; text-transform:uppercase; }
+.pvx-home-level strong { color:var(--pvx-cyan); font-size:.85rem; }
+.pvx-home-level span { padding-left:8px; border-left:1px solid rgba(255,255,255,.1); }
+
 .pvx-command-grid {
   position: relative;
   z-index: 6;
@@ -1439,6 +1479,11 @@ body.pvx-modal-open { overflow: hidden; }
   .pvx-daily-ops-head { display:flex; justify-content:flex-start; }
   .pvx-daily-reset { justify-items: start; min-width: 0; }
   .pvx-daily-ops-layout { grid-template-columns: 1fr; }
+  .pvx-daily-page { min-height:auto; padding:34px 18px 28px; }
+  .pvx-daily-page-head { display:grid; align-items:start; margin-bottom:18px; }
+  .pvx-daily-page-head h1 { font-size:clamp(3.7rem,16vw,5.6rem); }
+  .pvx-daily-page .pvx-daily-reset { justify-items:start; width:100%; }
+  .pvx-daily-page-layout { grid-template-columns:1fr; }
   .pvx-daily-task-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pvx-daily-reward-card { grid-template-columns: 74px 1fr; }
   .pvx-daily-reward-card img { width: 74px; }
@@ -1471,6 +1516,14 @@ body.pvx-modal-open { overflow: hidden; }
   .pvx-daily-reward-card { grid-template-columns: 68px 1fr; padding: 9px; }
   .pvx-daily-reward-card img { width: 68px; }
   .pvx-daily-loot { grid-template-columns: 1fr auto; }
+  .pvx-daily-page { padding:28px 14px 22px; }
+  .pvx-daily-page-head > div > p:last-child { font-size:.64rem; }
+  .pvx-daily-missions,.pvx-daily-page .pvx-daily-reward-panel { padding:14px; border-radius:17px; }
+  .pvx-daily-page .pvx-daily-task { min-height:0; padding:13px; }
+  .pvx-daily-page .pvx-daily-task-head { grid-template-columns:28px 1fr auto; gap:9px; }
+  .pvx-daily-page .pvx-daily-task-head > span { width:28px; border-radius:9px; }
+  .pvx-daily-section-label { align-items:flex-start; gap:8px; }
+  .pvx-daily-section-label > div { flex-wrap:wrap; justify-content:flex-end; }
   .pvx-command-card{padding:14px}.pvx-command-head{display:grid}.pvx-command-head h2{font-size:1.55rem}.pvx-command-head>span{justify-self:start}.pvx-journey-grid{gap:8px}.pvx-intel-card{grid-template-columns:86px 1fr;padding:10px}.pvx-intel-card img{width:86px}.pvx-sector-mini-head{grid-template-columns:28px 1fr auto;gap:8px}.pvx-sector-mini-head>span{width:28px;border-radius:9px;font-size:.7rem}.pvx-command-actions{display:grid}.pvx-command-actions button{width:100%}
   .pvx-battle-tutorial{padding:12px 13px}.pvx-battle-tutorial button{width:100%}
   .pvx-page{width:min(100% - 20px,1240px);padding-top:28px}.pvx-page-header{display:grid;gap:16px}.pvx-page-header h1{font-size:3.6rem}.pvx-balance{width:100%;grid-template-columns:1fr auto;align-items:center}.pvx-balance button{grid-column:1/-1}
