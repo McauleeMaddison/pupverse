@@ -449,11 +449,15 @@ export function startComputerBattle() {
     return;
   }
 
-  const shuffledCards = shuffleCards(playableCards);
+  const activeHand = getActiveDeckCardIds()
+    .map((cardId) => cards.find((card) => card.id === cardId))
+    .filter((card) => card?.stats);
+  const shuffledCards = shuffleCards(activeHand.length === 5 ? activeHand : playableCards);
+  const opponentPool = shuffleCards(playableCards.filter((card) => card.id !== shuffledCards[0]?.id));
 
   gameState.mode = "battle";
   gameState.playerCard = shuffledCards[0];
-  gameState.computerCard = shuffledCards[1];
+  gameState.computerCard = opponentPool[0] || shuffledCards[1];
   gameState.selectedStat = null;
   gameState.computerRevealed = false;
   gameState.resultMessage = "Choose your strongest stat to battle!";
