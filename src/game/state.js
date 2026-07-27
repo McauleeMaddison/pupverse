@@ -643,7 +643,7 @@ export function toggleActiveDeckCard(cardId) {
     saveGame();
     return { ok: true, active: false };
   }
-  if (deck.length >= 3) return { ok: false, error: "Your active deck already has three cards." };
+  if (deck.length >= 5) return { ok: false, error: "Your active deck already has five cards." };
   gameState.activeDeckCardIds = [...deck, cardId];
   saveGame();
   return { ok: true, active: true };
@@ -863,8 +863,8 @@ function getArenaDeck() {
   const ownedCards = gameState.collection
     .map((cardId) => cards.find((card) => card.id === cardId))
     .filter((card) => card?.stats);
-  const pool = ownedCards.length >= 3 ? ownedCards : cards.filter((card) => card?.stats);
-  return shuffleCards(pool).slice(0, 3);
+  const pool = ownedCards.length >= 5 ? ownedCards : cards.filter((card) => card?.stats);
+  return shuffleCards(pool).slice(0, 5);
 }
 
 Object.assign(gameState, {

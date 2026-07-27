@@ -382,7 +382,7 @@ function startPrimaryPlayFlow() {
 }
 
 function activeDeck() {
-  return backend.decks.find((deck) => deck.active) || backend.decks[0] || null;
+  return backend.decks.find((deck) => deck.active && deck.deck_cards?.length === 5) || null;
 }
 
 async function refreshPlayerData() {
@@ -899,8 +899,8 @@ function getActiveDailyBoard() {
 
 function renderHomeDeckHand() {
   const deckCards = getActiveDeckCardIds().map((id) => cards.find((card) => card.id === id)).filter(Boolean);
-  const ready = deckCards.length === 3;
-  return `<section class="pvx-home-deck-hand pvx-home-deck-orbit ${ready ? "ready" : "incomplete"} ${homeDeckOrbitPaused ? "is-paused" : ""}"><header><div><small>Active hand</small><h2>${ready ? "Your cards are in motion" : `${deckCards.length}/3 cards selected`}</h2></div><button class="pvx-deck-orbit-control" data-action="toggle-deck-orbit" aria-pressed="${homeDeckOrbitPaused}" aria-label="${homeDeckOrbitPaused ? "Resume" : "Pause"} deck rotation"><span>${homeDeckOrbitPaused ? "▶" : "Ⅱ"}</span>${homeDeckOrbitPaused ? "Resume" : "Pause"}</button></header><div class="pvx-home-deck-fan" data-deck-orbit style="--orbit-turn:${homeDeckOrbitRotation}deg">${deckCards.length ? `<div class="pvx-deck-orbit-glow" aria-hidden="true"></div>${deckCards.map((card, index) => `<div class="pvx-deck-orbit-slot card-${index + 1}" style="--slot:${index * 120}deg"><button class="pvx-home-deck-card ${homeDeckFlippedCardId === card.id ? "flipped" : ""}" data-action="toggle-home-deck-card" data-card-id="${card.id}" aria-pressed="${homeDeckFlippedCardId === card.id}" aria-label="Flip ${escapeHtml(card.name)}"><span class="pvx-home-deck-card-inner"><span class="pvx-home-deck-card-front">${renderCardImage(card)}<b>${escapeHtml(card.name)}</b></span><span class="pvx-home-deck-card-back"><small>${escapeHtml(card.rarity)} · ${escapeHtml(card.element)}</small><strong>${escapeHtml(card.name)}</strong><div>${stats.map((stat) => `<span><i>${stat.short}</i><b>${getStatValue(card, stat.key)}</b></span>`).join("")}</div><em>Tap to flip back</em></span></span></button></div>`).join("")}` : `<div class="pvx-home-deck-empty"><i>◇</i><b>Your first deck is waiting</b><span>Choose three cards in the Vault to build your hand.</span></div>`}</div><footer><p>${ready ? "Drag to steer the orbit. Tap pause to hold the hand, then tap a card to inspect it." : "Your strongest three cards become your active hand."}</p><div><button data-action="go-vault">Manage deck</button><button class="pvx-home-deck-battle" data-action="go-battle" ${ready ? "" : "disabled"}>${ready ? "Battle now →" : "Select cards"}</button></div></footer></section>`;
+  const ready = deckCards.length === 5;
+  return `<section class="pvx-home-deck-hand pvx-home-deck-orbit ${ready ? "ready" : "incomplete"} ${homeDeckOrbitPaused ? "is-paused" : ""}"><header><div><small>Active hand</small><h2>${ready ? "Your cards are in motion" : `${deckCards.length}/5 cards selected`}</h2></div><button class="pvx-deck-orbit-control" data-action="toggle-deck-orbit" aria-pressed="${homeDeckOrbitPaused}" aria-label="${homeDeckOrbitPaused ? "Resume" : "Pause"} deck rotation"><span>${homeDeckOrbitPaused ? "▶" : "Ⅱ"}</span>${homeDeckOrbitPaused ? "Resume" : "Pause"}</button></header><div class="pvx-home-deck-fan" data-deck-orbit style="--orbit-turn:${homeDeckOrbitRotation}deg">${deckCards.length ? `<div class="pvx-deck-orbit-glow" aria-hidden="true"></div>${deckCards.map((card, index) => `<div class="pvx-deck-orbit-slot card-${index + 1}" style="--slot:${index * (360 / deckCards.length)}deg"><button class="pvx-home-deck-card ${homeDeckFlippedCardId === card.id ? "flipped" : ""}" data-action="toggle-home-deck-card" data-card-id="${card.id}" aria-pressed="${homeDeckFlippedCardId === card.id}" aria-label="Flip ${escapeHtml(card.name)}"><span class="pvx-home-deck-card-inner"><span class="pvx-home-deck-card-front">${renderCardImage(card)}<b>${escapeHtml(card.name)}</b></span><span class="pvx-home-deck-card-back"><small>${escapeHtml(card.rarity)} · ${escapeHtml(card.element)}</small><strong>${escapeHtml(card.name)}</strong><div>${stats.map((stat) => `<span><i>${stat.short}</i><b>${getStatValue(card, stat.key)}</b></span>`).join("")}</div><em>Tap to flip back</em></span></span></button></div>`).join("")}` : `<div class="pvx-home-deck-empty"><i>◇</i><b>Your first deck is waiting</b><span>Choose five cards in the Vault to build your hand.</span></div>`}</div><footer><p>${ready ? "Drag to steer the orbit. Tap pause to hold the hand, then tap a card to inspect it." : "Your strongest five cards become your active hand."}</p><div><button data-action="go-vault">Manage deck</button><button class="pvx-home-deck-battle" data-action="go-battle" ${ready ? "" : "disabled"}>${ready ? "Battle now →" : "Select cards"}</button></div></footer></section>`;
 }
 
 function renderHome() {
@@ -1023,8 +1023,8 @@ function renderVaultCard(card, index) {
 
 function renderDeckBuilder() {
   const deckCards = getActiveDeckCardIds().map((id) => cards.find((card) => card.id === id)).filter(Boolean);
-  const ready = deckCards.length === 3;
-  return `<section class="pvx-deck-summary"><div><small>Battle deck</small><strong>${ready ? "Ready to play" : `${deckCards.length}/3 selected`}</strong><p>${ready ? deckCards.map((card) => escapeHtml(card.name)).join(" · ") : "Use the Deck control on any card below to build your three-card squad."}</p></div><button data-action="${ready ? "go-battle" : "go-vault"}" ${ready ? "" : "disabled"}>${ready ? "Battle now →" : "Choose cards"}</button></section>`;
+  const ready = deckCards.length === 5;
+  return `<section class="pvx-deck-summary"><div><small>Battle deck</small><strong>${ready ? "Ready to play" : `${deckCards.length}/5 selected`}</strong><p>${ready ? deckCards.map((card) => escapeHtml(card.name)).join(" · ") : "Use the Deck control on any card below to build your five-card squad."}</p></div><button data-action="${ready ? "go-battle" : "go-vault"}" ${ready ? "" : "disabled"}>${ready ? "Battle now →" : "Choose cards"}</button></section>`;
 }
 
 function renderComparePanel() {
@@ -1325,7 +1325,7 @@ async function refreshRemoteMatch() {
 
 async function beginRemoteQueue(mode) {
   const deck = activeDeck();
-  if (!deck) throw new Error("Create an active deck with at least three cards first.");
+  if (!deck) throw new Error("Create an active deck with five cards first.");
   await removeArenaSubscriptions();
   gameState.arenaMode = mode;
   gameState.arenaStatus = "queue";
@@ -1459,9 +1459,9 @@ async function handleClick(event) {
     if (!result.ok) notice(result.error);
     if (result.ok && backend.configured && backend.session) {
       const deckCardIds = getActiveDeckCardIds();
-      if (deckCardIds.length !== 3) {
+      if (deckCardIds.length !== 5) {
         gameState.activeDeckCardIds = previousDeck;
-        notice("A synced active deck must contain exactly three cards.");
+        notice("A synced active deck must contain exactly five cards.");
       } else {
         try {
           await updateRemoteDeck(deckCardIds, crypto.randomUUID());
@@ -1558,7 +1558,7 @@ async function handleClick(event) {
   if (action === "create-room") {
     if (backend.configured && backend.session) {
       const deck = activeDeck();
-      if (!deck) return notice("Create an active three-card deck first.");
+      if (!deck) return notice("Create an active five-card deck first.");
       try {
         const room = await createRemoteFriendRoom(deck.id);
         gameState.friendRoomCode = room.code;
