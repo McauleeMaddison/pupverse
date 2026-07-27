@@ -902,7 +902,7 @@ function renderHome() {
           <h1><span>NEON</span><em>BATTLES</em></h1>
           <p class="pvx-hero-text">Choose a stat. Win the round. Build your collection. PupVerse delivers fast, focused card battles with a rewarding daily rhythm.</p>
           <div class="pvx-home-badges"><span>Fast three-minute battles</span><span>Play instantly</span><span>Daily card + 24 coins</span></div>
-          <div class="pvx-hero-actions"><button class="pvx-primary" data-action="${heroPrimaryAction.action}"><span>${escapeHtml(heroPrimaryAction.kicker)}</span><b>${escapeHtml(heroPrimaryAction.label)}</b><i>→</i></button><button class="pvx-secondary" data-action="${heroSecondaryAction.action}"><span>✦</span><b>${escapeHtml(heroSecondaryAction.label)}</b></button>${showAccountCta ? `<button class="pvx-account-cta" data-action="go-online"><span>◉</span><b>Create account or sign in</b><i>→</i></button>` : ""}</div>
+          <div class="pvx-hero-actions"><button class="pvx-primary" data-action="${heroPrimaryAction.action}"><span>${escapeHtml(heroPrimaryAction.kicker)}</span><b>${escapeHtml(heroPrimaryAction.label)}</b><i>→</i></button><button class="pvx-secondary" data-action="${heroSecondaryAction.action}"><span>✦</span><b>${escapeHtml(heroSecondaryAction.label)}</b></button>${showAccountCta ? `<button class="pvx-account-cta" data-action="go-signup"><span>◉</span><b>Create account or sign in</b><i>→</i></button>` : ""}</div>
           <div class="pvx-home-level"><small>Player level</small><strong>${level}</strong><span>Keep your streak moving</span></div>
         </div>
         <section class="pvx-home-drop ${featuredDropExpanded ? "expanded" : "collapsed"}">
@@ -1343,6 +1343,7 @@ async function handleClick(event) {
   if (action === "go-vault") return go("collection");
   if (action === "go-battle") { if (!hasTutorialWin()) trackEvent("first_battle_started"); selectedVaultCardId = null; vaultCardFlipped = false; startComputerBattle(); return renderApp(); }
   if (action === "go-online") { selectedVaultCardId = null; vaultCardFlipped = false; openArenaLeague(); return renderApp(); }
+  if (action === "go-signup") { backend.authMode = "signup"; backend.error = ""; backend.message = ""; selectedVaultCardId = null; vaultCardFlipped = false; openArenaLeague(); return renderApp(); }
   if (action === "toggle-home-panel") return toggleHomePanel(target.dataset.panel);
   if (action === "preview-card") { selectedVaultCardId = target.dataset.cardId; vaultCardFlipped = false; return renderApp(); }
   if (action === "close-card") { selectedVaultCardId = null; vaultCardFlipped = false; return renderApp(); }
