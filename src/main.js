@@ -116,6 +116,8 @@ const HOME_PANEL_KEYS = ["showcase", "daily", "command"];
 let selectedVaultCardId = null;
 let vaultCardFlipped = false;
 let homeDeckFlippedCardId = null;
+let homeDeckOrbitPaused = false;
+let homeDeckOrbitRotation = 0;
 let packTimer = null;
 let matchmakingTimer = null;
 let subscribedMatchId = null;
@@ -898,7 +900,7 @@ function getActiveDailyBoard() {
 function renderHomeDeckHand() {
   const deckCards = getActiveDeckCardIds().map((id) => cards.find((card) => card.id === id)).filter(Boolean);
   const ready = deckCards.length === 3;
-  return `<section class="pvx-home-deck-hand ${ready ? "ready" : "incomplete"}"><header><div><small>Active deck</small><h2>${ready ? "Your hand is ready" : `${deckCards.length}/3 cards selected`}</h2></div><span>${ready ? "Battle ready" : "Choose cards"}</span></header><div class="pvx-home-deck-fan">${deckCards.length ? deckCards.map((card, index) => `<button class="pvx-home-deck-card card-${index + 1} ${homeDeckFlippedCardId === card.id ? "flipped" : ""}" data-action="toggle-home-deck-card" data-card-id="${card.id}" aria-pressed="${homeDeckFlippedCardId === card.id}" aria-label="Flip ${escapeHtml(card.name)}"><span class="pvx-home-deck-card-inner"><span class="pvx-home-deck-card-front">${renderCardImage(card)}<b>${escapeHtml(card.name)}</b></span><span class="pvx-home-deck-card-back"><small>${escapeHtml(card.rarity)} · ${escapeHtml(card.element)}</small><strong>${escapeHtml(card.name)}</strong><div>${stats.map((stat) => `<span><i>${stat.short}</i><b>${getStatValue(card, stat.key)}</b></span>`).join("")}</div><em>Tap to flip back</em></span></span></button>`).join("") : `<div class="pvx-home-deck-empty"><i>◇</i><b>Your first deck is waiting</b><span>Choose three cards in the Vault to build your hand.</span></div>`}</div><footer><p>${ready ? "Hover to inspect on desktop, or tap a card to flip it on mobile." : "Your strongest three cards become your active hand."}</p><div><button data-action="go-vault">Manage deck</button><button class="pvx-home-deck-battle" data-action="go-battle" ${ready ? "" : "disabled"}>${ready ? "Battle now →" : "Select cards"}</button></div></footer></section>`;
+  return `<section class="pvx-home-deck-hand pvx-home-deck-orbit ${ready ? "ready" : "incomplete"} ${homeDeckOrbitPaused ? "is-paused" : ""}"><header><div><small>Active hand</small><h2>${ready ? "Your cards are in motion" : `${deckCards.length}/3 cards selected`}</h2></div><button class="pvx-deck-orbit-control" data-action="toggle-deck-orbit" aria-pressed="${homeDeckOrbitPaused}" aria-label="${homeDeckOrbitPaused ? "Resume" : "Pause"} deck rotation"><span>${homeDeckOrbitPaused ? "▶" : "Ⅱ"}</span>${homeDeckOrbitPaused ? "Resume" : "Pause"}</button></header><div class="pvx-home-deck-fan" data-deck-orbit style="--orbit-turn:${homeDeckOrbitRotation}deg">${deckCards.length ? `<div class="pvx-deck-orbit-glow" aria-hidden="true"></div>${deckCards.map((card, index) => `<div class="pvx-deck-orbit-slot card-${index + 1}" style="--slot:${index * 120}deg"><button class="pvx-home-deck-card ${homeDeckFlippedCardId === card.id ? "flipped" : ""}" data-action="toggle-home-deck-card" data-card-id="${card.id}" aria-pressed="${homeDeckFlippedCardId === card.id}" aria-label="Flip ${escapeHtml(card.name)}"><span class="pvx-home-deck-card-inner"><span class="pvx-home-deck-card-front">${renderCardImage(card)}<b>${escapeHtml(card.name)}</b></span><span class="pvx-home-deck-card-back"><small>${escapeHtml(card.rarity)} · ${escapeHtml(card.element)}</small><strong>${escapeHtml(card.name)}</strong><div>${stats.map((stat) => `<span><i>${stat.short}</i><b>${getStatValue(card, stat.key)}</b></span>`).join("")}</div><em>Tap to flip back</em></span></span></button></div>`).join("")}` : `<div class="pvx-home-deck-empty"><i>◇</i><b>Your first deck is waiting</b><span>Choose three cards in the Vault to build your hand.</span></div>`}</div><footer><p>${ready ? "Drag to steer the orbit. Tap pause to hold the hand, then tap a card to inspect it." : "Your strongest three cards become your active hand."}</p><div><button data-action="go-vault">Manage deck</button><button class="pvx-home-deck-battle" data-action="go-battle" ${ready ? "" : "disabled"}>${ready ? "Battle now →" : "Select cards"}</button></div></footer></section>`;
 }
 
 function renderHome() {
@@ -1249,7 +1251,44 @@ function renderApp() {
   document.body.classList.toggle("pvx-modal-open", Boolean(selectedVaultCardId || packOverlay));
   document.body.classList.toggle("pvx-large-text", largeTextEnabled);
   setupImageFallbacks();
+  setupHomeDeckOrbit();
   startAnimatedBackground();
+}
+
+function setupHomeDeckOrbit() {
+  const orbit = app.querySelector("[data-deck-orbit]");
+  if (!orbit) return;
+  let startX = 0;
+  let startRotation = homeDeckOrbitRotation;
+  let dragged = false;
+  let suppressClick = false;
+  orbit.addEventListener("pointerdown", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    startX = event.clientX;
+    startRotation = homeDeckOrbitRotation;
+    dragged = false;
+    orbit.setPointerCapture?.(event.pointerId);
+  });
+  orbit.addEventListener("pointermove", (event) => {
+    if (!orbit.hasPointerCapture?.(event.pointerId)) return;
+    const distance = event.clientX - startX;
+    if (Math.abs(distance) < 5 && !dragged) return;
+    dragged = true;
+    homeDeckOrbitPaused = true;
+    homeDeckOrbitRotation = startRotation + distance * 0.7;
+    orbit.closest(".pvx-home-deck-orbit")?.classList.add("is-paused");
+    orbit.style.setProperty("--orbit-turn", `${homeDeckOrbitRotation}deg`);
+  });
+  orbit.addEventListener("pointerup", (event) => {
+    if (orbit.hasPointerCapture?.(event.pointerId)) orbit.releasePointerCapture?.(event.pointerId);
+    suppressClick = dragged;
+  });
+  orbit.addEventListener("click", (event) => {
+    if (!suppressClick) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressClick = false;
+  }, true);
 }
 
 function go(mode) {
@@ -1382,6 +1421,7 @@ async function handleClick(event) {
   }
   if (action === "go-shop") return go("shop");
   if (action === "go-vault") return go("collection");
+  if (action === "toggle-deck-orbit") { homeDeckOrbitPaused = !homeDeckOrbitPaused; return renderApp(); }
   if (action === "toggle-home-deck-card") { homeDeckFlippedCardId = homeDeckFlippedCardId === target.dataset.cardId ? null : target.dataset.cardId; return renderApp(); }
   if (action === "go-battle") { if (!hasTutorialWin()) trackEvent("first_battle_started"); selectedVaultCardId = null; vaultCardFlipped = false; startComputerBattle(); return renderApp(); }
   if (action === "go-online") { selectedVaultCardId = null; vaultCardFlipped = false; openArenaLeague(); return renderApp(); }
