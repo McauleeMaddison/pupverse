@@ -426,6 +426,7 @@ function renderShell(content, active = gameState.mode) {
   const username = escapeHtml(backend.profile?.username || "MADDYPUP");
   const isGuest = Boolean(backend.session?.user?.is_anonymous);
   const hasSession = Boolean(backend.session?.user);
+  const mobileAccountLabel = hasSession ? "Online" : "Sign in";
 
   return `
     <section class="pvx-shell">
@@ -488,6 +489,11 @@ function renderShell(content, active = gameState.mode) {
                 : ""
           }
         </div>
+
+        <button class="pvx-mobile-account" data-action="go-online" aria-label="${mobileAccountLabel}: open account and online play">
+          <span class="pvx-avatar" aria-hidden="true">${avatar}</span>
+          <b>${mobileAccountLabel}</b>
+        </button>
       </header>
 
       <main class="pvx-main" id="pvx-main-content" tabindex="-1">
@@ -507,6 +513,10 @@ function renderShell(content, active = gameState.mode) {
 
         <button class="${active === "collection" ? "active" : ""}" data-action="go-vault">
           <span>◇</span><b>Vault</b>
+        </button>
+
+        <button class="${active === "online" ? "active" : ""}" data-action="go-online">
+          <span>◉</span><b>${hasSession ? "Online" : "Account"}</b>
         </button>
       </nav>
     </section>
