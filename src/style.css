@@ -1917,3 +1917,19 @@ body.pvx-modal-open { overflow: hidden; }
   .pvx-mobile-nav button b { display:none; }
   .pvx-main { padding-bottom:18px; }
 }
+
+/* Auth feedback must remain legible at every viewport size. */
+.pvx-form-error,
+.pvx-form-message {
+  display:flex;
+  align-items:center;
+  min-height:42px;
+  margin:0 !important;
+  padding:10px 12px !important;
+  border-radius:8px;
+  font-size:.64rem !important;
+  font-weight:800;
+  line-height:1.4;
+}
+.pvx-form-error { color:#ffd4df !important; background:rgba(255,80,120,.14); border:1px solid rgba(255,128,157,.25); }
+.pvx-form-message { color:#c5ffef !important; background:rgba(80,230,191,.1); border:1px solid rgba(111,245,211,.2); }
