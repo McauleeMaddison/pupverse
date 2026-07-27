@@ -1557,6 +1557,32 @@ body.pvx-modal-open { overflow: hidden; }
   .pvx-pack-overlay{padding:20px 10px}.pvx-pack-overlay>h1{font-size:4rem}.pvx-reveal-grid{grid-template-columns:repeat(3,1fr);gap:6px}.pvx-reveal-back span{width:45px;border-radius:14px 5px;font-size:.52rem}.pvx-reveal-back b{font-size:1rem}.pvx-reveal-back small{font-size:.34rem}.pvx-reveal-front>div{padding:22px 7px 7px}.pvx-reveal-front h2{font-size:.8rem}.pvx-reveal-front small,.pvx-reveal-front p{font-size:.34rem}.pvx-reveal-actions{width:100%;display:grid}.pvx-reveal-actions button{width:100%}
 }
 
+/* Keep account actions comfortably tappable above the fixed mobile dock. */
+@media (max-width: 760px) {
+  .pvx-auth {
+    min-height: calc(100dvh - 68px);
+    align-content: start;
+    padding: 24px 0 calc(112px + env(safe-area-inset-bottom));
+  }
+  .pvx-auth-art { gap: 0; }
+  .pvx-auth-art > p:not(.pvx-eyebrow),
+  .pvx-auth-art > div:last-child { display: none; }
+  .pvx-auth-card { gap: 14px; padding: 18px; border-radius: 18px; }
+  .pvx-auth-card > nav { gap: 7px; padding: 5px; }
+  .pvx-auth-card > nav button,
+  .pvx-auth-submit,
+  .pvx-auth-ghost {
+    min-height: 52px;
+    font-size: .68rem;
+  }
+  .pvx-auth-card input { height: 52px; font-size: 16px; }
+  .pvx-auth-card label { gap: 7px; }
+  .pvx-auth-card label span { font-size: .54rem; }
+  .pvx-auth-submit { padding-inline: 16px; }
+  .pvx-form-error,
+  .pvx-form-message { min-height: 48px; font-size: .68rem !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pvx-shell *, .pvx-pack-overlay * { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
   .pvx-flip-inner { transition-duration: .01ms; }
