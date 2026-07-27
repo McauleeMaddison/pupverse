@@ -116,6 +116,7 @@ let packOpeningRequestInFlight = false;
 let activeInfoPanel = null;
 let onlineStatus = navigator.onLine;
 let deferredInstallPrompt = null;
+let featuredDropExpanded = !(window.matchMedia?.("(max-width: 620px)")?.matches ?? false);
 const ONBOARDING_STORAGE_KEY = "pupverse-beta-onboarding-dismissed";
 const FEEDBACK_URL = "https://github.com/McauleeMaddison/pupverse/issues/new?title=PupVerse%20beta%20feedback";
 const RANKED_BETA_ENABLED = false;
@@ -737,6 +738,11 @@ function getDailyNextAction(dailyBoard) {
   return { eyebrow: "Recommended next", title: nextTask.title, copy: nextTask.description, action: taskAction.action, label: taskAction.label };
 }
 
+function renderHomeMissionSummary(dailyBoard) {
+  const nextAction = getDailyNextAction(dailyBoard);
+  return `<article class="pvx-home-mission-summary ${dailyBoard.canClaim ? "ready" : ""} ${dailyBoard.rewardClaimed ? "claimed" : ""}"><div class="pvx-home-mission-top"><div><small>Daily Ops</small><h2>${dailyBoard.rewardClaimed ? "Ritual complete" : `${dailyBoard.completedCount}/${dailyBoard.totalTasks} missions`}</h2></div><span>${dailyBoard.rewardClaimed ? "✓" : `${dailyBoard.totalTasks - dailyBoard.completedCount} left`}</span></div><div class="pvx-home-mission-dots" aria-label="${dailyBoard.completedCount} of ${dailyBoard.totalTasks} daily missions complete">${dailyBoard.tasks.map((task) => `<i class="${task.complete ? "complete" : ""}"></i>`).join("")}</div><p>${escapeHtml(nextAction.copy)}</p><button data-action="${nextAction.action}">${escapeHtml(nextAction.label)} <i>→</i></button></article>`;
+}
+
 function renderSectorSnapshot(sector) {
   return `<article class="pvx-sector-mini"><div class="pvx-sector-mini-head"><span>${escapeHtml(sector.icon)}</span><small>${escapeHtml(sector.title)}</small><strong>${sector.ownedUnique}/${sector.totalCards}</strong></div><div class="pvx-progress"><i style="width:${sector.pressure}%"></i></div><p>${sector.completion}% scanned · ${escapeHtml(sector.dominant.short)} ${sector.dominant.value}</p></article>`;
 }
@@ -862,35 +868,6 @@ function renderHome() {
       button: !hasTutorialWin() ? "Start battle" : "Play now",
       featured: true,
     },
-    {
-      icon: "✦",
-      kicker: "Daily Ops",
-      title: dailyBoard.canClaim ? "Today’s drop is ready" : `${dailyBoard.completedCount}/${dailyBoard.totalTasks} missions`,
-      copy: dailyBoard.rewardClaimed
-        ? "Today's drop is banked. A fresh four-task board rotates at the next reset."
-        : dailyBoard.canClaim
-          ? "All four tasks are clear. Claim the bonus card and 24 coins now."
-          : "Four focused challenges. One premium drop. A reason to return tomorrow.",
-      meta: dailyBoard.rewardClaimed
-        ? "Reward claimed"
-        : dailyBoard.canClaim
-          ? "Claim now"
-          : `Reset ${dailyBoard.refreshesIn}`,
-      action: dailyBoard.canClaim ? "claim-daily" : "go-daily",
-      button: dailyBoard.canClaim ? "Claim reward" : "Open board",
-    },
-    {
-      icon: "◇",
-      kicker: "Vault",
-      title: hasOpenedFirstPack() ? "Explore your vault" : "Unlock your first cards",
-      copy: hasOpenedFirstPack()
-        ? "Every pull, rarity, and duplicate—ready when it’s time to build your next edge."
-        : "Open a starter pack to begin building a collection with real tactical options.",
-      meta: `${getCollectionProgress().uniqueOwned}/${getCollectionProgress().totalCards} discovered`,
-      action: hasOpenedFirstPack() ? "go-vault" : "open-pack",
-      button: hasOpenedFirstPack() ? "Open vault" : "Open starter pack",
-      packId: hasOpenedFirstPack() ? "" : packs[0]?.id || "crypto",
-    },
   ];
 
   return renderShell(`
@@ -905,21 +882,12 @@ function renderHome() {
           <div class="pvx-hero-actions"><button class="pvx-primary" data-action="${heroPrimaryAction.action}"><span>${escapeHtml(heroPrimaryAction.kicker)}</span><b>${escapeHtml(heroPrimaryAction.label)}</b><i>→</i></button><button class="pvx-secondary" data-action="${heroSecondaryAction.action}"><span>✦</span><b>${escapeHtml(heroSecondaryAction.label)}</b></button></div>
           <div class="pvx-home-level"><small>Player level</small><strong>${level}</strong><span>Keep your streak moving</span></div>
         </div>
-        <article class="pvx-home-spotlight">
-          <div class="pvx-home-spotlight-copy">
-            <small>${rewardCard ? "Today's featured drop" : "Starter spotlight"}</small>
-            <h2>${escapeHtml(spotlightCard?.name || "First card incoming")}</h2>
-            <p>${escapeHtml(rewardCard ? dailyRewardCopy : spotlightCard ? `${spotlightCard.rarity} ${spotlightCard.element} card art, tuned for a premium mobile feel.` : "Open a pack to reveal the first featured pup.")}</p>
-            <div><span>${escapeHtml(spotlightCard?.rarity || "Reward card")}</span><b>${escapeHtml(spotlightCard?.element || "Collection")}</b></div>
-          </div>
-          ${
-            spotlightCard
-              ? `<button class="pvx-home-spotlight-card" data-action="preview-card" data-card-id="${spotlightCard.id}" aria-label="Preview ${escapeHtml(spotlightCard.name)}">${renderCardImage(spotlightCard)}</button>`
-              : ""
-          }
-        </article>
+        <section class="pvx-home-drop ${featuredDropExpanded ? "expanded" : "collapsed"}">
+          <button class="pvx-home-drop-toggle" data-action="toggle-featured-drop" aria-expanded="${featuredDropExpanded}"><span><small>${rewardCard ? "Today’s featured drop" : "Starter spotlight"}</small><b>${escapeHtml(spotlightCard?.name || "First card incoming")}</b></span><em>${featuredDropExpanded ? "Hide" : "View"}<i>${featuredDropExpanded ? "−" : "+"}</i></em></button>
+          <div class="pvx-home-drop-content"><div><p>${escapeHtml(rewardCard ? dailyRewardCopy : spotlightCard ? `${spotlightCard.rarity} ${spotlightCard.element} card art, tuned for a premium mobile feel.` : "Open a pack to reveal the first featured pup.")}</p><span>${escapeHtml(spotlightCard?.rarity || "Reward card")}</span><b>${escapeHtml(spotlightCard?.element || "Collection")}</b></div>${spotlightCard ? `<button class="pvx-home-drop-card" data-action="preview-card" data-card-id="${spotlightCard.id}" aria-label="Preview ${escapeHtml(spotlightCard.name)}">${renderCardImage(spotlightCard)}</button>` : ""}</div>
+        </section>
       </section>
-      <section class="pvx-core-actions">${coreActions.map(renderCoreActionCard).join("")}</section>
+      <section class="pvx-home-command"><div class="pvx-core-actions">${coreActions.map(renderCoreActionCard).join("")}</div>${renderHomeMissionSummary(dailyBoard)}</section>
       ${showOnboarding ? `<aside class="pvx-onboarding" aria-label="Getting started"><div><p class="pvx-eyebrow"><i></i> Your first three moves</p><h2>Start simple. Build momentum.</h2><p>Every first session follows the same satisfying loop—battle, collect, return.</p></div><ol><li><b>01</b><span><strong>Battle</strong><small>Choose a stat and take your first round.</small></span></li><li><b>02</b><span><strong>Open a pack</strong><small>Turn your win into fresh tactical options.</small></span></li><li><b>03</b><span><strong>Visit Daily Ops</strong><small>Complete missions for a bonus drop.</small></span></li></ol><button data-action="dismiss-onboarding">I’m ready <i>→</i></button></aside>` : ""}
     </section>`, "home");
 }
@@ -1297,6 +1265,7 @@ async function handleClick(event) {
   const action = target.dataset.action;
   if (action === "show-info") { activeInfoPanel = target.dataset.panel; return renderApp(); }
   if (action === "close-info") { activeInfoPanel = null; return renderApp(); }
+  if (action === "toggle-featured-drop") { featuredDropExpanded = !featuredDropExpanded; return renderApp(); }
   if (action === "install-app") {
     if (!deferredInstallPrompt) { activeInfoPanel = "install"; return renderApp(); }
     deferredInstallPrompt.prompt();
