@@ -146,6 +146,41 @@ const backend = {
 };
 const homePanels = loadHomePanels();
 
+function getAccountErrorMessage(error) {
+  const candidates = [
+    error?.message,
+    error?.error_description,
+    error?.details,
+    error?.context?.message,
+    error?.context?.body,
+    typeof error === "string" ? error : "",
+  ];
+  let message = "";
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string" || !candidate.trim() || candidate.trim() === "{}") continue;
+    try {
+      const parsed = JSON.parse(candidate);
+      const parsedMessage = parsed?.message || parsed?.error_description || parsed?.error || parsed?.details;
+      if (typeof parsedMessage === "string" && parsedMessage.trim()) {
+        message = parsedMessage.trim();
+        break;
+      }
+    } catch {
+      message = candidate.trim();
+      break;
+    }
+  }
+
+  const lowerMessage = message.toLowerCase();
+  if (/redirect|site url|redirect_to/.test(lowerMessage)) return "Account confirmation is not configured for this app address yet. Please try again shortly.";
+  if (/email.*disabled|signups?.*disabled/.test(lowerMessage)) return "New account creation is temporarily unavailable. Please try again shortly.";
+  if (/rate limit|too many requests/.test(lowerMessage)) return "Too many attempts from this device. Please wait a few minutes, then try again.";
+  if (/database|saving new user|profile/.test(lowerMessage)) return "Your account could not be prepared securely. Please try again in a moment.";
+  if (/network|fetch|failed to fetch/.test(lowerMessage)) return "We could not reach the secure account service. Check your connection and try again.";
+  return message || "Account creation did not complete. Please try again in a moment.";
+}
+
 function getDefaultHomePanels() {
   const compactViewport = window.matchMedia?.("(max-width: 820px)")?.matches ?? false;
   if (!compactViewport) {
@@ -1541,12 +1576,12 @@ async function handleClick(event) {
       });
       backend.message = "Confirmation sent. Open that email on this device before signing out.";
       await refreshPlayerData();
-    } catch (error) { backend.error = error.message; }
+    } catch (error) { console.error("[PupVerse] Account upgrade failed:", error); backend.error = getAccountErrorMessage(error); }
     return renderApp();
   }
   if (action === "guest-link-provider") {
     try { await linkGuestProvider(target.dataset.provider); }
-    catch (error) { backend.error = error.message; return renderApp(); }
+    catch (error) { console.error("[PupVerse] Account provider link failed:", error); backend.error = getAccountErrorMessage(error); return renderApp(); }
     return;
   }
   if (action === "auth-submit") {
@@ -1560,7 +1595,7 @@ async function handleClick(event) {
       const result = backend.authMode === "signup" ? await backendSignUp(credentials) : await backendSignIn(credentials);
       if (backend.authMode === "signup") trackEvent("account_signup_completed");
       if (backend.authMode === "signup" && !result.session) { backend.authMode = "signin"; backend.message = "Account created. Confirm your email, then sign in."; }
-    } catch (error) { backend.error = error.message; }
+    } catch (error) { console.error("[PupVerse] Account authentication failed:", error); backend.error = getAccountErrorMessage(error); }
     return renderApp();
   }
   if (action === "backend-signout") { await backendSignOut(); return handleSession(null); }
