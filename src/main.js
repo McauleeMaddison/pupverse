@@ -1028,8 +1028,8 @@ function renderVaultCard(card, index) {
 
 function renderDeckBuilder() {
   const deckCards = getActiveDeckCardIds().map((id) => cards.find((card) => card.id === id)).filter(Boolean);
-  const average = stats.map((stat) => ({ ...stat, value: deckCards.length ? Math.round(deckCards.reduce((total, card) => total + getStatValue(card, stat.key), 0) / deckCards.length) : 0 }));
-  return `<section class="pvx-deck-builder"><header><div><small>Active battle deck</small><h2>${deckCards.length}/3 cards selected</h2></div><span>${deckCards.length === 3 ? "Ready to battle" : `${3 - deckCards.length} slot${3 - deckCards.length === 1 ? "" : "s"} open`}</span></header><div class="pvx-deck-slots">${Array.from({ length: 3 }, (_, index) => { const card = deckCards[index]; return card ? `<button data-action="preview-card" data-card-id="${card.id}" aria-label="Inspect ${escapeHtml(card.name)}">${renderCardImage(card)}<b>${escapeHtml(card.name)}</b></button>` : `<div><i>+</i><small>Choose card</small></div>`; }).join("")}</div><div class="pvx-deck-balance" aria-label="Deck stat balance">${average.map((stat) => `<span><small>${stat.short}</small><i><b style="width:${stat.value}%"></b></i></span>`).join("")}</div><p>${deckCards.length === 3 ? "Balanced deck ready. Use the card controls below to refine it." : "Choose up to three owned cards below; each card can be removed at any time."}</p></section>`;
+  const ready = deckCards.length === 3;
+  return `<section class="pvx-deck-summary"><div><small>Battle deck</small><strong>${ready ? "Ready to play" : `${deckCards.length}/3 selected`}</strong><p>${ready ? deckCards.map((card) => escapeHtml(card.name)).join(" · ") : "Use the Deck control on any card below to build your three-card squad."}</p></div><button data-action="${ready ? "go-battle" : "go-vault"}" ${ready ? "" : "disabled"}>${ready ? "Battle now →" : "Choose cards"}</button></section>`;
 }
 
 function renderComparePanel() {
