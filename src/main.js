@@ -14,6 +14,10 @@ import {
   getCollectionProgress,
   getDailyMissionBoard,
   setCollectionFilter,
+  setCollectionSort,
+  toggleFavouriteCard,
+  getActiveDeckCardIds,
+  toggleActiveDeckCard,
   addDevCoins,
   getStatValue,
   openArenaLeague,
@@ -62,6 +66,7 @@ import {
   blockRemotePlayer,
   openRemotePack,
   claimRemoteDailyReward,
+  setFavouriteCard as setRemoteFavouriteCard,
   isSupabaseConfigured,
 } from "./services/arenaBackend.js";
 
@@ -117,6 +122,9 @@ let activeInfoPanel = null;
 let onlineStatus = navigator.onLine;
 let deferredInstallPrompt = null;
 let featuredDropExpanded = !(window.matchMedia?.("(max-width: 620px)")?.matches ?? false);
+let compareCardIds = [];
+const TEXT_SIZE_STORAGE_KEY = "pupverse-large-text";
+let largeTextEnabled = window.localStorage?.getItem(TEXT_SIZE_STORAGE_KEY) === "true";
 const ONBOARDING_STORAGE_KEY = "pupverse-beta-onboarding-dismissed";
 const FEEDBACK_URL = "https://github.com/McauleeMaddison/pupverse/issues/new?title=PupVerse%20beta%20feedback";
 const RANKED_BETA_ENABLED = false;
@@ -406,7 +414,7 @@ function renderInfoPanel() {
 }
 
 function renderBetaFooter() {
-  return `<footer class="pvx-beta-footer"><div><span class="pvx-beta-pill">Public beta</span><p>${onlineStatus ? "Play instantly · Progress may change during beta" : "You’re offline · Local play is still available"}</p></div><nav aria-label="Beta information"><button data-action="show-info" data-panel="howto">How to play</button><button data-action="install-app">${deferredInstallPrompt ? "Install app" : "Install"}</button><button data-action="show-info" data-panel="safety">Safety</button><button data-action="show-info" data-panel="privacy">Privacy</button><button data-action="show-info" data-panel="terms">Terms</button><button data-action="open-feedback">Feedback ↗</button></nav></footer>`;
+  return `<footer class="pvx-beta-footer"><div><span class="pvx-beta-pill">Public beta</span><p>${onlineStatus ? "Play instantly · Progress may change during beta" : "You’re offline · Local play is still available"}</p></div><nav aria-label="Beta information"><button data-action="toggle-text-size" aria-pressed="${largeTextEnabled}">${largeTextEnabled ? "Standard text" : "Larger text"}</button><button data-action="show-info" data-panel="howto">How to play</button><button data-action="install-app">${deferredInstallPrompt ? "Install app" : "Install"}</button><button data-action="show-info" data-panel="safety">Safety</button><button data-action="show-info" data-panel="privacy">Privacy</button><button data-action="show-info" data-panel="terms">Terms</button><button data-action="open-feedback">Feedback ↗</button></nav></footer>`;
 }
 
 function renderShell(content, active = gameState.mode) {
@@ -418,6 +426,7 @@ function renderShell(content, active = gameState.mode) {
 
   return `
     <section class="pvx-shell">
+      <a class="pvx-skip-link" href="#pvx-main-content">Skip to game content</a>
       <header class="pvx-topbar">
         ${renderBrand()}
 
@@ -478,7 +487,7 @@ function renderShell(content, active = gameState.mode) {
         </div>
       </header>
 
-      <main class="pvx-main">
+      <main class="pvx-main" id="pvx-main-content" tabindex="-1">
         ${content}
       </main>
 
@@ -953,18 +962,36 @@ function renderShop() {
 
 function renderVaultCard(card, index) {
   const strongest = stats.reduce((best, stat) => getStatValue(card, stat.key) > getStatValue(card, best.key) ? stat : best, stats[0]);
-  return `<button class="pvx-vault-card" style="--delay:${Math.min(index, 12) * .045}s" data-action="preview-card" data-card-id="${card.id}"><div class="pvx-vault-image"><span class="pvx-rarity rarity-${card.rarity.toLowerCase()}">${escapeHtml(card.rarity)}</span>${card.count > 1 ? `<span class="pvx-quantity">×${card.count}</span>` : ""}${renderCardImage(card)}<div class="pvx-card-sheen"></div><span class="pvx-inspect">Inspect card <i>↗</i></span></div><div class="pvx-vault-copy"><small>${escapeHtml(card.pack)}</small><h3>${escapeHtml(card.name)}</h3><p>${escapeHtml(card.element)}</p><div><span>${strongest.short}</span><strong>${getStatValue(card, strongest.key)}</strong><i style="width:${getStatValue(card, strongest.key)}%"></i></div></div></button>`;
+  const favourite = gameState.favouriteCards.includes(card.id);
+  const inDeck = getActiveDeckCardIds().includes(card.id);
+  const compared = compareCardIds.includes(card.id);
+  return `<article class="pvx-vault-card" style="--delay:${Math.min(index, 12) * .045}s"><button class="pvx-vault-card-main" data-action="preview-card" data-card-id="${card.id}"><div class="pvx-vault-image"><span class="pvx-rarity rarity-${card.rarity.toLowerCase()}">${escapeHtml(card.rarity)}</span>${card.count > 1 ? `<span class="pvx-quantity">×${card.count}</span>` : ""}${renderCardImage(card)}<div class="pvx-card-sheen"></div><span class="pvx-inspect">Inspect card <i>↗</i></span></div><div class="pvx-vault-copy"><small>${escapeHtml(card.pack)}</small><h3>${escapeHtml(card.name)}</h3><p>${escapeHtml(card.element)}</p><div><span>${strongest.short}</span><strong>${getStatValue(card, strongest.key)}</strong><i style="width:${getStatValue(card, strongest.key)}%"></i></div></div></button><footer><button class="${favourite ? "active" : ""}" data-action="toggle-favourite" data-card-id="${card.id}" aria-label="${favourite ? "Remove" : "Add"} ${escapeHtml(card.name)} ${favourite ? "from" : "to"} favourites">${favourite ? "♥" : "♡"}</button><button class="${inDeck ? "active" : ""}" data-action="toggle-deck-card" data-card-id="${card.id}">${inDeck ? "In deck" : "Add deck"}</button><button class="${compared ? "active" : ""}" data-action="toggle-compare" data-card-id="${card.id}" ${!compared && compareCardIds.length >= 2 ? "disabled" : ""}>${compared ? "Selected" : "Compare"}</button></footer></article>`;
+}
+
+function renderDeckBuilder() {
+  const deckCards = getActiveDeckCardIds().map((id) => cards.find((card) => card.id === id)).filter(Boolean);
+  const average = stats.map((stat) => ({ ...stat, value: deckCards.length ? Math.round(deckCards.reduce((total, card) => total + getStatValue(card, stat.key), 0) / deckCards.length) : 0 }));
+  return `<section class="pvx-deck-builder"><header><div><small>Active battle deck</small><h2>${deckCards.length}/3 cards selected</h2></div><span>${deckCards.length === 3 ? "Ready to battle" : `${3 - deckCards.length} slot${3 - deckCards.length === 1 ? "" : "s"} open`}</span></header><div class="pvx-deck-slots">${Array.from({ length: 3 }, (_, index) => { const card = deckCards[index]; return card ? `<button data-action="preview-card" data-card-id="${card.id}" aria-label="Inspect ${escapeHtml(card.name)}">${renderCardImage(card)}<b>${escapeHtml(card.name)}</b></button>` : `<div><i>+</i><small>Choose card</small></div>`; }).join("")}</div><div class="pvx-deck-balance" aria-label="Deck stat balance">${average.map((stat) => `<span><small>${stat.short}</small><i><b style="width:${stat.value}%"></b></i></span>`).join("")}</div><p>${deckCards.length === 3 ? "Balanced deck ready. Use the card controls below to refine it." : "Choose up to three owned cards below; each card can be removed at any time."}</p></section>`;
+}
+
+function renderComparePanel() {
+  if (!compareCardIds.length) return "";
+  const compareCards = compareCardIds.map((id) => cards.find((card) => card.id === id)).filter(Boolean);
+  return `<section class="pvx-compare-panel"><header><div><small>Card comparison</small><h2>${compareCards.length === 1 ? "Choose one more card" : "Head-to-head stats"}</h2></div><button data-action="clear-compare">Clear</button></header><div>${compareCards.map((card) => `<article>${renderCardImage(card)}<b>${escapeHtml(card.name)}</b>${stats.map((stat) => `<span><small>${stat.short}</small><strong>${getStatValue(card, stat.key)}</strong></span>`).join("")}</article>`).join("")}</div></section>`;
 }
 
 function renderCollection() {
   const progress = getCollectionProgress();
   const filtered = getFilteredCollectionCards();
-  const counts = { All: progress.uniqueOwned, CryptoPups: progress.cryptoOwned, CyberPups: progress.cyberOwned, AlienPups: progress.alienOwned };
+  const counts = { All: progress.uniqueOwned, Favourites: gameState.favouriteCards.length, Duplicates: progress.duplicateCount, CryptoPups: progress.cryptoOwned, CyberPups: progress.cyberOwned, AlienPups: progress.alienOwned };
   return renderShell(`
     <section class="pvx-page pvx-vault">
       <header class="pvx-page-header vault-header"><div><p class="pvx-eyebrow"><i></i> Your cosmic archive</p><h1>COLLECTION <span>VAULT</span></h1><p>Every pup you discover lives here. Inspect a card to reveal its full holographic data.</p></div><div class="pvx-vault-meter"><div><strong>${progress.percentage}%</strong><small>complete</small></div><span><i style="--progress:${progress.percentage * 3.6}deg"></i></span></div></header>
       <section class="pvx-vault-summary"><article><span>◇</span><div><small>Unique pups</small><strong>${progress.uniqueOwned}<i> / ${progress.totalCards}</i></strong></div></article><article><span>✦</span><div><small>Total cards</small><strong>${gameState.collection.length}</strong></div></article><article><span>⧉</span><div><small>Duplicates</small><strong>${progress.duplicateCount}</strong></div></article><article class="wide"><div><small>Archive completion</small><strong>${progress.percentage}%</strong></div><div class="pvx-progress"><i style="width:${progress.percentage}%"></i></div></article></section>
+      ${renderDeckBuilder()}
+      ${renderComparePanel()}
       <nav class="pvx-filterbar" aria-label="Collection filters">${Object.entries(counts).map(([name, count]) => `<button class="${gameState.collectionFilter === name ? "active" : ""}" data-action="filter-vault" data-filter="${name}"><span>${name}</span><b>${count}</b></button>`).join("")}</nav>
+      <nav class="pvx-vault-sort" aria-label="Sort collection"><span>Sort</span>${["newest", "rarity", "duplicates", "name"].map((sort) => `<button class="${gameState.collectionSort === sort ? "active" : ""}" data-action="sort-vault" data-sort="${sort}">${titleCase(sort)}</button>`).join("")}</nav>
       <section class="pvx-vault-grid">${filtered.length ? filtered.map(renderVaultCard).join("") : `<div class="pvx-empty vault-empty"><span>◇</span><h3>This vault wing is waiting</h3><p>Open matching packs to discover pups from this universe.</p><button data-action="go-shop">Open pack shop</button></div>`}</section>
     </section>
     ${renderCardModal()}`, "collection");
@@ -979,7 +1006,7 @@ function renderCardModal() {
   const card = cards.find((item) => item.id === selectedVaultCardId);
   if (!card) return "";
   const owned = gameState.collection.filter((id) => id === card.id).length;
-  return `<div class="pvx-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(card.name)} card details"><button class="pvx-modal-scrim" data-action="close-card" aria-label="Close card"></button><section class="pvx-card-viewer"><button class="pvx-modal-close" data-action="close-card" aria-label="Close">×</button><div class="pvx-modal-stage"><div class="pvx-holo-rings"></div><button class="pvx-flip-card ${vaultCardFlipped ? "flipped" : ""}" data-action="flip-card" aria-label="Flip ${escapeHtml(card.name)} card"><div class="pvx-flip-inner"><div class="pvx-flip-front">${renderCardImage(card)}<div class="pvx-card-sheen"></div></div>${renderCardBack(card)}</div></button><p>Tap card to ${vaultCardFlipped ? "view artwork" : "reveal combat data"}</p></div><div class="pvx-modal-copy"><p class="pvx-eyebrow"><i></i> ${escapeHtml(card.pack)} archive</p><h1>${escapeHtml(card.name)}</h1><div class="pvx-modal-tags"><span>${escapeHtml(card.rarity)}</span><span>${escapeHtml(card.element)}</span><span>${card.year}</span>${owned ? `<span>Owned ×${owned}</span>` : `<span>Preview</span>`}</div><p>${escapeHtml(card.ability?.description || "A one-of-a-kind pup forged in the PupVerse.")}</p><div class="pvx-modal-actions"><button class="pvx-primary" data-action="flip-card">${vaultCardFlipped ? "Show card art" : "Reveal stats"}<i>↻</i></button><button data-action="go-battle">Take to battle</button></div><small class="pvx-modal-tip">Drag-free 3D reveal · Reduced-motion friendly</small></div></section></div>`;
+  return `<div class="pvx-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(card.name)} card details"><button class="pvx-modal-scrim" data-action="close-card" aria-label="Close card"></button><section class="pvx-card-viewer"><button class="pvx-modal-close" data-action="close-card" aria-label="Close">×</button><div class="pvx-modal-stage"><div class="pvx-holo-rings"></div><button class="pvx-flip-card ${vaultCardFlipped ? "flipped" : ""}" data-action="flip-card" aria-label="Flip ${escapeHtml(card.name)} card"><div class="pvx-flip-inner"><div class="pvx-flip-front">${renderCardImage(card)}<div class="pvx-card-sheen"></div></div>${renderCardBack(card)}</div></button><p>Tap card to ${vaultCardFlipped ? "view artwork" : "reveal combat data"}</p></div><div class="pvx-modal-copy"><p class="pvx-eyebrow"><i></i> ${escapeHtml(card.pack)} archive</p><h1>${escapeHtml(card.name)}</h1><div class="pvx-modal-tags"><span>${escapeHtml(card.rarity)}</span><span>${escapeHtml(card.element)}</span><span>${card.year}</span>${owned ? `<span>Owned ×${owned}</span>` : `<span>Preview</span>`}</div><p>${escapeHtml(card.ability?.description || "A one-of-a-kind pup forged in the PupVerse.")}</p><div class="pvx-modal-actions"><button class="pvx-primary" data-action="flip-card">${vaultCardFlipped ? "Show card art" : "Reveal stats"}<i>↻</i></button><button data-action="go-battle">Take to battle</button><button data-action="share-card" data-card-id="${card.id}">Share pull ↗</button></div><small class="pvx-modal-tip">Drag-free 3D reveal · Reduced-motion friendly</small></div></section></div>`;
 }
 
 function renderBattleCard(card, owner, hidden = false, player = false) {
@@ -1164,6 +1191,7 @@ function renderApp() {
     event.target.querySelector('[data-action="auth-submit"], [data-action="guest-upgrade-submit"]')?.click();
   };
   document.body.classList.toggle("pvx-modal-open", Boolean(selectedVaultCardId || packOverlay));
+  document.body.classList.toggle("pvx-large-text", largeTextEnabled);
   setupImageFallbacks();
   startAnimatedBackground();
 }
@@ -1265,6 +1293,7 @@ async function handleClick(event) {
   const action = target.dataset.action;
   if (action === "show-info") { activeInfoPanel = target.dataset.panel; return renderApp(); }
   if (action === "close-info") { activeInfoPanel = null; return renderApp(); }
+  if (action === "toggle-text-size") { largeTextEnabled = !largeTextEnabled; try { window.localStorage?.setItem(TEXT_SIZE_STORAGE_KEY, String(largeTextEnabled)); } catch {} return renderApp(); }
   if (action === "toggle-featured-drop") { featuredDropExpanded = !featuredDropExpanded; return renderApp(); }
   if (action === "install-app") {
     if (!deferredInstallPrompt) { activeInfoPanel = "install"; return renderApp(); }
@@ -1304,7 +1333,42 @@ async function handleClick(event) {
   if (action === "preview-card") { selectedVaultCardId = target.dataset.cardId; vaultCardFlipped = false; return renderApp(); }
   if (action === "close-card") { selectedVaultCardId = null; vaultCardFlipped = false; return renderApp(); }
   if (action === "flip-card") { vaultCardFlipped = !vaultCardFlipped; return renderApp(); }
+  if (action === "share-card") {
+    const card = cards.find((item) => item.id === target.dataset.cardId);
+    if (!card) return;
+    const shareData = { title: `PupVerse · ${card.name}`, text: `I just pulled ${card.name}, a ${card.rarity} PupVerse card. Can you top it?`, url: window.location.origin };
+    try {
+      if (navigator.share) await navigator.share(shareData);
+      else if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
+      else return notice("Sharing is not available in this browser yet.");
+      trackEvent("card_shared", { rarity: String(card.rarity).toLowerCase() });
+      return notice(navigator.share ? "Share sheet opened." : "Pull copied — ready to share.");
+    } catch (error) {
+      if (error?.name !== "AbortError") notice("Could not open sharing. Try again in your browser.");
+      return;
+    }
+  }
   if (action === "filter-vault") { setCollectionFilter(target.dataset.filter); return renderApp(); }
+  if (action === "sort-vault") { setCollectionSort(target.dataset.sort); return renderApp(); }
+  if (action === "toggle-compare") {
+    const cardId = target.dataset.cardId;
+    compareCardIds = compareCardIds.includes(cardId) ? compareCardIds.filter((id) => id !== cardId) : [...compareCardIds, cardId].slice(0, 2);
+    return renderApp();
+  }
+  if (action === "clear-compare") { compareCardIds = []; return renderApp(); }
+  if (action === "toggle-deck-card") {
+    const result = toggleActiveDeckCard(target.dataset.cardId);
+    if (!result.ok) notice(result.error);
+    return renderApp();
+  }
+  if (action === "toggle-favourite") {
+    const cardId = target.dataset.cardId;
+    const favourite = toggleFavouriteCard(cardId);
+    if (backend.configured && backend.session) {
+      setRemoteFavouriteCard(cardId, favourite).catch((error) => notice(error.message || "Favourite will sync when you reconnect."));
+    }
+    return renderApp();
+  }
   if (action === "dev-coins") {
     const added = addDevCoins();
     renderApp();

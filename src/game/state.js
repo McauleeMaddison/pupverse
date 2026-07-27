@@ -163,6 +163,8 @@ function createDefaultSave() {
     dailyStreak: 0,
     lastDailyClaimDate: null,
     dailyOps: null,
+    favouriteCards: [],
+    activeDeckCardIds: [],
   };
 }
 
@@ -367,7 +369,7 @@ export const gameState = {
   activePackId: null,
 
   collectionFilter: "All",
-  favouriteCards: [],
+  collectionSort: "newest",
   packOpeningHistory: [],
 };
 
@@ -398,10 +400,7 @@ export function hydrateCloudProgress(profile, playerCards = [], packOpenings = [
 
 export function useLocalProgress() {
   progressSource = "local";
-  Object.assign(gameState, loadSave(), {
-    favouriteCards: [],
-    packOpeningHistory: [],
-  });
+  Object.assign(gameState, loadSave(), { packOpeningHistory: [] });
   ensureDailyOpsState();
 }
 
@@ -423,6 +422,8 @@ export function saveGame() {
     onlineWins: gameState.onlineWins,
     rankedWins: gameState.rankedWins,
     totalPacksOpened: gameState.totalPacksOpened,
+    favouriteCards: gameState.favouriteCards,
+    activeDeckCardIds: gameState.activeDeckCardIds,
     dailyOps: gameState.dailyOps,
   };
 
@@ -587,16 +588,65 @@ export function getCollectionWithCounts() {
 
 export function getFilteredCollectionCards() {
   const ownedCards = getCollectionWithCounts();
+  const filtered = gameState.collectionFilter === "All"
+    ? ownedCards
+    : gameState.collectionFilter === "Favourites"
+      ? ownedCards.filter((card) => gameState.favouriteCards.includes(card.id))
+      : gameState.collectionFilter === "Duplicates"
+        ? ownedCards.filter((card) => card.count > 1)
+        : ownedCards.filter((card) => card.pack === gameState.collectionFilter);
 
-  if (gameState.collectionFilter === "All") {
-    return ownedCards;
-  }
-
-  return ownedCards.filter((card) => card.pack === gameState.collectionFilter);
+  return [...filtered].sort((a, b) => {
+    if (gameState.collectionSort === "rarity") {
+      const rarityOrder = ["mystic", "mythic", "legendary", "epic", "rare", "uncommon", "common"];
+      return rarityOrder.indexOf(String(a.rarity).toLowerCase()) - rarityOrder.indexOf(String(b.rarity).toLowerCase());
+    }
+    if (gameState.collectionSort === "duplicates") return b.count - a.count || a.name.localeCompare(b.name);
+    if (gameState.collectionSort === "name") return a.name.localeCompare(b.name);
+    return gameState.collection.lastIndexOf(b.id) - gameState.collection.lastIndexOf(a.id);
+  });
 }
 
 export function setCollectionFilter(filterName) {
   gameState.collectionFilter = filterName || "All";
+}
+
+export function setCollectionSort(sortName) {
+  gameState.collectionSort = ["newest", "rarity", "duplicates", "name"].includes(sortName) ? sortName : "newest";
+}
+
+export function toggleFavouriteCard(cardId) {
+  const favourites = new Set(gameState.favouriteCards || []);
+  if (favourites.has(cardId)) favourites.delete(cardId);
+  else favourites.add(cardId);
+  gameState.favouriteCards = [...favourites];
+  saveGame();
+  return favourites.has(cardId);
+}
+
+export function getActiveDeckCardIds() {
+  const owned = new Set(gameState.collection);
+  const valid = (gameState.activeDeckCardIds || []).filter((cardId) => owned.has(cardId));
+  if (valid.length !== gameState.activeDeckCardIds.length) {
+    gameState.activeDeckCardIds = valid;
+    saveGame();
+  }
+  return valid;
+}
+
+export function toggleActiveDeckCard(cardId) {
+  const owned = new Set(gameState.collection);
+  if (!owned.has(cardId)) return { ok: false, error: "Open this card before adding it to a deck." };
+  const deck = getActiveDeckCardIds();
+  if (deck.includes(cardId)) {
+    gameState.activeDeckCardIds = deck.filter((id) => id !== cardId);
+    saveGame();
+    return { ok: true, active: false };
+  }
+  if (deck.length >= 3) return { ok: false, error: "Your active deck already has three cards." };
+  gameState.activeDeckCardIds = [...deck, cardId];
+  saveGame();
+  return { ok: true, active: true };
 }
 
 export function getCollectionProgress() {
