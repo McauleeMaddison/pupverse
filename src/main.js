@@ -124,7 +124,6 @@ let packOpeningRequestInFlight = false;
 let activeInfoPanel = null;
 let onlineStatus = navigator.onLine;
 let deferredInstallPrompt = null;
-let featuredDropExpanded = !(window.matchMedia?.("(max-width: 620px)")?.matches ?? false);
 let compareCardIds = [];
 const TEXT_SIZE_STORAGE_KEY = "pupverse-large-text";
 let largeTextEnabled = window.localStorage?.getItem(TEXT_SIZE_STORAGE_KEY) === "true";
@@ -895,12 +894,15 @@ function getActiveDailyBoard() {
   };
 }
 
+function renderHomeDeckHand() {
+  const deckCards = getActiveDeckCardIds().map((id) => cards.find((card) => card.id === id)).filter(Boolean);
+  const ready = deckCards.length === 3;
+  return `<section class="pvx-home-deck-hand ${ready ? "ready" : "incomplete"}"><header><div><small>Active deck</small><h2>${ready ? "Your hand is ready" : `${deckCards.length}/3 cards selected`}</h2></div><span>${ready ? "Battle ready" : "Choose cards"}</span></header><div class="pvx-home-deck-fan">${deckCards.length ? deckCards.map((card, index) => `<button class="pvx-home-deck-card card-${index + 1}" data-action="preview-card" data-card-id="${card.id}" aria-label="Inspect ${escapeHtml(card.name)}">${renderCardImage(card)}<b>${escapeHtml(card.name)}</b></button>`).join("") : `<div class="pvx-home-deck-empty"><i>◇</i><b>Your first deck is waiting</b><span>Choose three cards in the Vault to build your hand.</span></div>`}</div><footer><p>${ready ? "Tap a card to inspect it, or take this hand straight into battle." : "Your strongest three cards become your active hand."}</p><div><button data-action="go-vault">Manage deck</button><button class="pvx-home-deck-battle" data-action="go-battle" ${ready ? "" : "disabled"}>${ready ? "Battle now →" : "Select cards"}</button></div></footer></section>`;
+}
+
 function renderHome() {
-  const showcase = getShowcaseCards();
   const dailyBoard = getActiveDailyBoard();
   const level = backend.profile?.level ?? gameState.level;
-  const rewardCard = dailyBoard.rewardCard;
-  const spotlightCard = rewardCard || showcase[1] || cards[0] || null;
   const showOnboarding = !hasDismissedOnboarding() && !hasTutorialWin();
   const playConfig = getPrimaryPlayConfig();
   const heroPrimaryAction = !hasTutorialWin()
@@ -911,13 +913,6 @@ function renderHome() {
     label: dailyBoard.canClaim ? "Claim today's reward" : "View daily ops",
   };
   const showAccountCta = backend.configured && !backend.session;
-  const dailyRewardCopy = dailyBoard.rewardClaimed
-    ? "Today's reward is already banked. A fresh four-mission board rotates in at the next reset."
-    : dailyBoard.rewardLocked
-      ? "Signed-in daily drops pay out from the protected progression service."
-      : dailyBoard.canClaim
-        ? "The board is clear. Claim today’s bonus card and 24 coins."
-        : `${dailyBoard.totalTasks - dailyBoard.completedCount} mission${dailyBoard.totalTasks - dailyBoard.completedCount === 1 ? "" : "s"} remain before today’s reward unlocks.`;
   const coreActions = [
     {
       icon: "⚔",
@@ -949,10 +944,7 @@ function renderHome() {
           <div class="pvx-hero-actions"><button class="pvx-primary" data-action="${heroPrimaryAction.action}"><span>${escapeHtml(heroPrimaryAction.kicker)}</span><b>${escapeHtml(heroPrimaryAction.label)}</b><i>→</i></button><button class="pvx-secondary" data-action="${heroSecondaryAction.action}"><span>✦</span><b>${escapeHtml(heroSecondaryAction.label)}</b></button>${showAccountCta ? `<button class="pvx-account-cta" data-action="go-signup"><span>◉</span><b>Create account or sign in</b><i>→</i></button>` : ""}</div>
           <div class="pvx-home-level"><small>Player level</small><strong>${level}</strong><span>Keep your streak moving</span></div>
         </div>
-        <section class="pvx-home-drop ${featuredDropExpanded ? "expanded" : "collapsed"}">
-          <button class="pvx-home-drop-toggle" data-action="toggle-featured-drop" aria-expanded="${featuredDropExpanded}"><span><small>${rewardCard ? "Today’s featured drop" : "Starter spotlight"}</small><b>${escapeHtml(spotlightCard?.name || "First card incoming")}</b></span><em>${featuredDropExpanded ? "Hide" : "View"}<i>${featuredDropExpanded ? "−" : "+"}</i></em></button>
-          <div class="pvx-home-drop-content"><div><p>${escapeHtml(rewardCard ? dailyRewardCopy : spotlightCard ? `${spotlightCard.rarity} ${spotlightCard.element} card art, tuned for a premium mobile feel.` : "Open a pack to reveal the first featured pup.")}</p><span>${escapeHtml(spotlightCard?.rarity || "Reward card")}</span><b>${escapeHtml(spotlightCard?.element || "Collection")}</b></div>${spotlightCard ? `<button class="pvx-home-drop-card" data-action="preview-card" data-card-id="${spotlightCard.id}" aria-label="Preview ${escapeHtml(spotlightCard.name)}">${renderCardImage(spotlightCard)}</button>` : ""}</div>
-        </section>
+        ${renderHomeDeckHand()}
       </section>
       <section class="pvx-home-command"><div class="pvx-core-actions">${coreActions.map(renderCoreActionCard).join("")}</div>${renderHomeMissionSummary(dailyBoard)}</section>
       ${showOnboarding ? `<aside class="pvx-onboarding" aria-label="Getting started"><div><p class="pvx-eyebrow"><i></i> Your first three moves</p><h2>Start simple. Build momentum.</h2><p>Every first session follows the same satisfying loop—battle, collect, return.</p></div><ol><li><b>01</b><span><strong>Battle</strong><small>Choose a stat and take your first round.</small></span></li><li><b>02</b><span><strong>Open a pack</strong><small>Turn your win into fresh tactical options.</small></span></li><li><b>03</b><span><strong>Visit Daily Ops</strong><small>Complete missions for a bonus drop.</small></span></li></ol><button data-action="dismiss-onboarding">I’m ready <i>→</i></button></aside>` : ""}
@@ -1357,7 +1349,6 @@ async function handleClick(event) {
   if (action === "show-info") { activeInfoPanel = target.dataset.panel; return renderApp(); }
   if (action === "close-info") { activeInfoPanel = null; return renderApp(); }
   if (action === "toggle-text-size") { largeTextEnabled = !largeTextEnabled; try { window.localStorage?.setItem(TEXT_SIZE_STORAGE_KEY, String(largeTextEnabled)); } catch {} return renderApp(); }
-  if (action === "toggle-featured-drop") { featuredDropExpanded = !featuredDropExpanded; return renderApp(); }
   if (action === "install-app") {
     if (!deferredInstallPrompt) { activeInfoPanel = "install"; return renderApp(); }
     deferredInstallPrompt.prompt();
