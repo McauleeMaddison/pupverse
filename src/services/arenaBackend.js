@@ -368,6 +368,26 @@ export async function claimRemoteDailyReward(requestId) {
   });
 }
 
+export async function updateRemoteDeck(cardIds, requestId) {
+  return invokeProgression({
+    action: "set-deck",
+    cardIds,
+    requestId: requestId || crypto.randomUUID(),
+  });
+}
+
+export async function getInviteCode() {
+  return invokeProgression({ action: "invite-code" });
+}
+
+export async function claimReferralReward(code, requestId) {
+  return invokeProgression({
+    action: "claim-referral",
+    code,
+    requestId: requestId || crypto.randomUUID(),
+  });
+}
+
 export async function setFavouriteCard(cardId, favourite) {
   assertConfigured();
 

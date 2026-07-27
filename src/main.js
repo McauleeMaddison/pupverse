@@ -66,6 +66,7 @@ import {
   blockRemotePlayer,
   openRemotePack,
   claimRemoteDailyReward,
+  updateRemoteDeck,
   setFavouriteCard as setRemoteFavouriteCard,
   isSupabaseConfigured,
 } from "./services/arenaBackend.js";
@@ -350,6 +351,8 @@ async function refreshPlayerData() {
   const result = await loadPlayerData(userId);
   backend.profile = result.profile;
   backend.decks = result.decks;
+  const remoteDeck = result.decks.find((deck) => deck.active) || result.decks[0];
+  if (remoteDeck?.deck_cards?.length) gameState.activeDeckCardIds = remoteDeck.deck_cards.map((entry) => entry.card_id);
   backend.leaderboard = result.leaderboard;
   backend.dailyBoard = result.dailyBoard;
   hydrateCloudProgress(result.profile, result.playerCards, result.packOpenings);
@@ -1357,8 +1360,25 @@ async function handleClick(event) {
   }
   if (action === "clear-compare") { compareCardIds = []; return renderApp(); }
   if (action === "toggle-deck-card") {
+    const previousDeck = [...getActiveDeckCardIds()];
     const result = toggleActiveDeckCard(target.dataset.cardId);
     if (!result.ok) notice(result.error);
+    if (result.ok && backend.configured && backend.session) {
+      const deckCardIds = getActiveDeckCardIds();
+      if (deckCardIds.length !== 3) {
+        gameState.activeDeckCardIds = previousDeck;
+        notice("A synced active deck must contain exactly three cards.");
+      } else {
+        try {
+          await updateRemoteDeck(deckCardIds, crypto.randomUUID());
+          await refreshPlayerData();
+          notice("Active deck saved securely.");
+        } catch (error) {
+          gameState.activeDeckCardIds = previousDeck;
+          notice(error.message || "Could not save the deck. Your previous deck is still active.");
+        }
+      }
+    }
     return renderApp();
   }
   if (action === "toggle-favourite") {

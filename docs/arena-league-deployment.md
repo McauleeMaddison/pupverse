@@ -14,6 +14,11 @@ locks the player's profile, verifies the balance, draws cards using server-side
 randomness, updates owned-card quantities, debits coins, and records the opening in
 one transaction. Direct browser writes to quantities and ownership are revoked.
 
+Active decks and referral rewards use the same trust boundary. A signed-in browser
+sends exactly three card IDs plus an idempotency key to `progression`; PostgreSQL
+verifies ownership, replaces the active deck in one transaction, and records the
+request. Invite codes and referral claims are server-issued and one-time only.
+
 ## Local setup
 
 Prerequisites: Docker Desktop and Node.js.
@@ -50,7 +55,8 @@ automated anonymous-account creation.
 
 1. Create a Supabase project.
 2. Link it with `npx supabase link --project-ref <project-ref>`.
-3. Apply schema and seed data with `npx supabase db push --include-seed`.
+3. Apply schema and seed data with `npx supabase db push --include-seed`. This includes
+   `202607270001_protected_decks_and_referrals.sql`, which revokes direct deck writes.
 4. Deploy functions with `npx supabase functions deploy arena`,
    `npx supabase functions deploy progression`, and
    `npx supabase functions deploy arena-cron --no-verify-jwt`.
@@ -77,9 +83,14 @@ Use two isolated browser profiles and two different email accounts.
 10. Open a pack in both browsers. Confirm each request debits coins once, the returned
     cards appear in `player_cards`, duplicate quantities increment, and a retry using
     the same request ID returns the same opening without a second debit.
-11. Attempt direct inserts, quantity changes, coin changes, and another player's Vault
-    reads through the browser client; every request must be rejected by grants/RLS.
+11. Attempt direct inserts, quantity changes, deck/deck-card writes, coin changes, and
+    another player's Vault reads through the browser client; every request must be
+    rejected by grants/RLS. Save a legal three-card deck through `progression` and
+    confirm it succeeds; retry the same request ID and confirm it is replayed.
 12. Create an anonymous player, open a pack, link an email or Google identity, and
     confirm the same player ID, balance, cards, favourites, and deck remain available.
+13. Generate an invite code for player A, redeem it as player B, retry the same request,
+    and confirm each balance changes once. Confirm self-referral and a second redemption
+    by player B are rejected.
 
 Do not launch ranked mode until all twelve checks pass against the hosted project.

@@ -42,6 +42,31 @@ const authenticatedHandler = withSupabase(
         return json(data, 200);
       }
 
+      if (body?.action === "set-deck") {
+        const cardIds = Array.isArray(body.cardIds) ? body.cardIds.map(String) : [];
+        const { data, error } = await ctx.supabase.rpc("set_active_deck", {
+          p_card_ids: cardIds,
+          p_request_id: String(body.requestId || ""),
+        });
+        if (error) throw error;
+        return json(data, 200);
+      }
+
+      if (body?.action === "invite-code") {
+        const { data, error } = await ctx.supabase.rpc("get_or_create_invite_code");
+        if (error) throw error;
+        return json(data, 200);
+      }
+
+      if (body?.action === "claim-referral") {
+        const { data, error } = await ctx.supabase.rpc("claim_referral_reward", {
+          p_code: String(body.code || ""),
+          p_request_id: String(body.requestId || ""),
+        });
+        if (error) throw error;
+        return json(data, 200);
+      }
+
       return json({ error: "Unknown progression action" }, 400);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Progression request failed";
