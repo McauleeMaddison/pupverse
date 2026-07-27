@@ -115,12 +115,12 @@ export async function initializeArenaBackend(onAuthChange) {
     supabase.realtime.setAuth(data.session.access_token);
   }
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange((event, session) => {
     if (session?.access_token) {
       supabase.realtime.setAuth(session.access_token);
     }
 
-    onAuthChange?.(session);
+    onAuthChange?.(session, event);
   });
 
   return { session: data.session };
@@ -172,7 +172,19 @@ export async function signIn({ email, password }) {
 
   if (error) throw error;
 
-  return data;
+  return data;
+}
+
+export async function requestPasswordReset(email) {
+  assertConfigured();
+  const cleanEmail = normaliseEmail(email);
+  if (!cleanEmail.includes("@")) throw new Error("Enter the email address used for your PupVerse account.");
+
+  const { data, error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+    redirectTo: `${window.location.origin}/?reset-password=1`,
+  });
+  if (error) throw error;
+  return data;
 }
 
 export async function signInAsGuest() {

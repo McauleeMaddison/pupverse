@@ -48,6 +48,8 @@ import {
   linkGuestProvider,
   signUp as backendSignUp,
   signIn as backendSignIn,
+  requestPasswordReset,
+  completeGuestPasswordUpgrade,
   signOut as backendSignOut,
   loadPlayerData,
   requestMatch,
@@ -141,6 +143,7 @@ const backend = {
   presence: {},
   authMode: "signin",
   upgradingGuest: false,
+  resettingPassword: false,
   message: "",
   error: "",
 };
@@ -416,7 +419,13 @@ async function bootstrapBackend() {
   if (!backend.configured) return;
 
   try {
-    const { session } = await initializeArenaBackend(handleSession);
+    const { session } = await initializeArenaBackend((nextSession, event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        backend.resettingPassword = true;
+        openArenaLeague();
+      }
+      handleSession(nextSession);
+    });
 
     // Do not automatically create an anonymous account.
     // Public players must deliberately create or sign into an account.
@@ -1120,6 +1129,7 @@ function renderRankGem(rating = gameState.rankRating) {
 }
 
 function renderOnlineHub() {
+  if (backend.resettingPassword && backend.session) return renderPasswordRecovery();
   if (backend.configured && !backend.session) return renderAuth();
   if (backend.upgradingGuest) return renderGuestUpgrade();
   const rating = backend.profile?.rank_rating ?? gameState.rankRating;
@@ -1137,7 +1147,11 @@ function renderGuestUpgrade() {
 
 function renderAuth() {
   const signup = backend.authMode === "signup";
-  return renderShell(`<section class="pvx-auth"><div class="pvx-auth-art"><div class="pvx-auth-orbits"></div>${renderRankGem(1248)}<p class="pvx-eyebrow"><i></i> Protected player identity</p><h1>START YOUR<br><span>NEON RUN</span></h1><p>Create a synced account or start instantly as a guest. Your packs, rank, daily drops, and recovery all stay protected once you decide to secure the run.</p><div><span>◆ Guest start</span><span>◆ Synced rewards</span><span>◆ Match recovery</span></div></div><form class="pvx-auth-card" data-auth-form><nav><button class="${signup ? "" : "active"}" type="button" data-action="auth-tab" data-mode="signin">Sign in</button><button class="${signup ? "active" : ""}" type="button" data-action="auth-tab" data-mode="signup">Create account</button></nav><p>${signup ? "Create your player identity" : "Welcome back, challenger"}</p>${signup ? `<label><span>Username</span><input id="authUsername" autocomplete="username" minlength="3" maxlength="20" placeholder="NeonPup" required></label>` : ""}<label><span>Email</span><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required></label><label><span>Password</span><input id="authPassword" type="password" autocomplete="${signup ? "new-password" : "current-password"}" minlength="8" placeholder="8+ characters" required></label>${backend.error ? `<p class="pvx-form-error" role="alert">${escapeHtml(backend.error)}</p>` : ""}${backend.message ? `<p class="pvx-form-message" role="status">${escapeHtml(backend.message)}</p>` : ""}<button class="pvx-auth-submit" data-action="auth-submit" type="submit">${signup ? "Create player" : "Sign in securely"}<span>→</span></button><button class="pvx-auth-ghost" type="button" data-action="start-guest">Start as guest now</button><small>Use a username, never your real name. You can secure the guest run later without losing the vault.</small></form></section>`, "online");
+  return renderShell(`<section class="pvx-auth"><div class="pvx-auth-art"><div class="pvx-auth-orbits"></div>${renderRankGem(1248)}<p class="pvx-eyebrow"><i></i> Protected player identity</p><h1>START YOUR<br><span>NEON RUN</span></h1><p>Create a synced account or start instantly as a guest. Your packs, rank, daily drops, and recovery all stay protected once you decide to secure the run.</p><div><span>◆ Guest start</span><span>◆ Synced rewards</span><span>◆ Match recovery</span></div></div><form class="pvx-auth-card" data-auth-form><nav><button class="${signup ? "" : "active"}" type="button" data-action="auth-tab" data-mode="signin">Sign in</button><button class="${signup ? "active" : ""}" type="button" data-action="auth-tab" data-mode="signup">Create account</button></nav><p>${signup ? "Create your player identity" : "Welcome back, challenger"}</p>${signup ? `<label><span>Username</span><input id="authUsername" autocomplete="username" minlength="3" maxlength="20" placeholder="NeonPup" required></label>` : ""}<label><span>Email</span><input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required></label><label><span>Password</span><input id="authPassword" type="password" autocomplete="${signup ? "new-password" : "current-password"}" minlength="8" placeholder="8+ characters" required></label>${backend.error ? `<p class="pvx-form-error" role="alert">${escapeHtml(backend.error)}</p>` : ""}${backend.message ? `<p class="pvx-form-message" role="status">${escapeHtml(backend.message)}</p>` : ""}<button class="pvx-auth-submit" data-action="auth-submit" type="submit">${signup ? "Create player" : "Sign in securely"}<span>→</span></button>${!signup ? `<button class="pvx-auth-ghost" type="button" data-action="request-password-reset">Forgot password?</button>` : ""}<button class="pvx-auth-ghost" type="button" data-action="start-guest">Start as guest now</button><small>Use a username, never your real name. You can secure the guest run later without losing the vault.</small></form></section>`, "online");
+}
+
+function renderPasswordRecovery() {
+  return renderShell(`<section class="pvx-auth"><div class="pvx-auth-art"><div class="pvx-auth-orbits"></div>${renderRankGem(1248)}<p class="pvx-eyebrow"><i></i> Account recovery</p><h1>SET A NEW<br><span>PASSWORD</span></h1><p>Your recovery link is secure and temporary. Choose a fresh password to return to your saved run.</p></div><form class="pvx-auth-card" data-password-recovery-form><p>Choose your new password</p><label><span>New password</span><input id="recoveryPassword" type="password" autocomplete="new-password" minlength="8" placeholder="8+ characters" required></label><label><span>Confirm password</span><input id="recoveryPasswordConfirm" type="password" autocomplete="new-password" minlength="8" placeholder="Repeat your password" required></label>${backend.error ? `<p class="pvx-form-error" role="alert">${escapeHtml(backend.error)}</p>` : ""}${backend.message ? `<p class="pvx-form-message" role="status">${escapeHtml(backend.message)}</p>` : ""}<button class="pvx-auth-submit" data-action="password-recovery-submit" type="submit">Save new password<span>→</span></button><small>Use at least eight characters. Once saved, your account stays signed in on this device.</small></form></section>`, "online");
 }
 
 function renderQueue() {
@@ -1237,7 +1251,7 @@ function renderApp() {
   app.onclick = handleClick;
   app.onsubmit = (event) => {
     event.preventDefault();
-    event.target.querySelector('[data-action="auth-submit"], [data-action="guest-upgrade-submit"]')?.click();
+    event.target.querySelector('[data-action="auth-submit"], [data-action="guest-upgrade-submit"], [data-action="password-recovery-submit"]')?.click();
   };
   document.body.classList.toggle("pvx-modal-open", Boolean(selectedVaultCardId || packOverlay));
   document.body.classList.toggle("pvx-large-text", largeTextEnabled);
@@ -1563,6 +1577,15 @@ async function handleClick(event) {
     } catch (error) { return notice(error.message); }
   }
   if (action === "auth-tab") { backend.authMode = target.dataset.mode === "signup" ? "signup" : "signin"; backend.error = ""; backend.message = ""; return renderApp(); }
+  if (action === "request-password-reset") {
+    const email = document.querySelector("#authEmail")?.value.trim();
+    backend.error = ""; backend.message = "";
+    try {
+      await requestPasswordReset(email);
+      backend.message = "Password reset email sent. Open it on this device, then choose a new password.";
+    } catch (error) { console.error("[PupVerse] Password reset request failed:", error); backend.error = getAccountErrorMessage(error); }
+    return renderApp();
+  }
   if (action === "upgrade-guest") { backend.upgradingGuest = true; backend.error = ""; backend.message = ""; openArenaLeague(); return renderApp(); }
   if (action === "cancel-guest-upgrade") { backend.upgradingGuest = false; backend.error = ""; backend.message = ""; return renderApp(); }
   if (action === "guest-upgrade-submit") {
@@ -1596,6 +1619,22 @@ async function handleClick(event) {
       if (backend.authMode === "signup") trackEvent("account_signup_completed");
       if (backend.authMode === "signup" && !result.session) { backend.authMode = "signin"; backend.message = "Account created. Confirm your email, then sign in."; }
     } catch (error) { console.error("[PupVerse] Account authentication failed:", error); backend.error = getAccountErrorMessage(error); }
+    return renderApp();
+  }
+  if (action === "password-recovery-submit") {
+    event.preventDefault();
+    if (!target.form?.reportValidity()) return;
+    const password = document.querySelector("#recoveryPassword")?.value || "";
+    const confirmation = document.querySelector("#recoveryPasswordConfirm")?.value || "";
+    if (password !== confirmation) { backend.error = "Your passwords do not match."; return renderApp(); }
+    backend.error = ""; backend.message = ""; target.disabled = true;
+    try {
+      await completeGuestPasswordUpgrade(password);
+      backend.resettingPassword = false;
+      window.history.replaceState({}, "", window.location.origin);
+      await refreshPlayerData();
+      backend.message = "Password updated. Your account is ready.";
+    } catch (error) { console.error("[PupVerse] Password reset failed:", error); backend.error = getAccountErrorMessage(error); }
     return renderApp();
   }
   if (action === "backend-signout") { await backendSignOut(); return handleSession(null); }
