@@ -125,6 +125,9 @@ let packOverlay = null;
 let revealedPackCards = 0;
 let packRevealIndex = 0;
 let packOpeningRequestInFlight = false;
+let battleResolutionPending = false;
+let pendingBattleStat = null;
+let battleResolveTimer = null;
 let activeInfoPanel = null;
 let onlineStatus = navigator.onLine;
 let deferredInstallPrompt = null;
@@ -1147,8 +1150,9 @@ function renderBattleHand(activeCard) {
 
 function renderSoloBattle() {
   if (!gameState.playerCard || !gameState.computerCard) startComputerBattle();
-  const selected = gameState.selectedStat;
+  const selected = gameState.selectedStat || pendingBattleStat;
   const result = gameState.roundResult;
+  const resolving = battleResolutionPending;
   const dailyBoard = getActiveDailyBoard();
   const recommendedStat = getRecommendedBattleStat(gameState.playerCard);
   const outcomeLabel = gameState.winner === "player" ? "Round won" : gameState.winner === "computer" ? "Round lost" : gameState.winner === "draw" ? "Round drawn" : "Awaiting your move";
@@ -1191,8 +1195,8 @@ function renderSoloBattle() {
           ? `<section class="pvx-battle-tutorial"><div><small>${escapeHtml(tutorialBanner.eyebrow)}</small><h2>${escapeHtml(tutorialBanner.title)}</h2><p>${escapeHtml(tutorialBanner.copy)}</p></div><button data-action="${tutorialBanner.action}"${tutorialActionAttr}>${escapeHtml(tutorialBanner.button)}</button></section>`
           : ""
       }
-      <main class="pvx-arena-board impact-${selected || "idle"} ${gameState.winner ? `result-${gameState.winner}` : ""}"><div class="pvx-arena-sky"></div><div class="pvx-arena-nebula nebula-one"></div><div class="pvx-arena-nebula nebula-two"></div><div class="pvx-arena-comet"></div><div class="pvx-arena-floor"></div><div class="pvx-arena-beam beam-left"></div><div class="pvx-arena-beam beam-right"></div><div class="pvx-arena-impact" aria-hidden="true"><i></i><i></i><i></i></div><div class="pvx-head-to-head player-side">${renderBattleCard(gameState.playerCard, "Your challenger", false, true)}${renderBattleHand(gameState.playerCard)}</div><section class="pvx-referee" aria-live="polite"><span><i></i> Head-to-head arena</span><div class="pvx-vs-core"><b>VS</b><i></i></div>${gameState.winner ? `<b class="pvx-round-verdict ${gameState.winner}">${outcomeLabel}</b>` : ""}<p class="${gameState.winner || ""}">${escapeHtml(gameState.resultMessage)}</p>${selected ? `<div class="pvx-round-values">${renderRoundValue(result?.playerValue ?? getEffectiveStatValue(gameState.playerCard, selected), result?.playerBoost)}<span>${titleCase(selected)}</span>${renderRoundValue(result?.opponentValue ?? getEffectiveStatValue(gameState.computerCard, selected), result?.opponentBoost)}</div>` : `<small>Choose the stat that gives your pup the edge</small>`}</section><div class="pvx-head-to-head rival-side">${renderBattleCard(gameState.computerCard, "CPU challenger", !gameState.computerRevealed)}</div></main>
-      <section class="pvx-stat-dock"><div><small>${gameState.computerRevealed ? "Official result" : "Your move"}</small><strong>${gameState.computerRevealed ? outcomeLabel : "Select one combat stat"}</strong>${!gameState.computerRevealed && !hasTutorialWin() ? `<p class="pvx-first-battle-coach"><i>✦</i><span><b>Strong opening move</b> ${escapeHtml(recommendedStat.label)} is your highest stat at ${getEffectiveStatValue(gameState.playerCard, recommendedStat.key)}.</span></p>` : ""}</div><div class="pvx-stat-grid">${stats.map((stat) => `<button class="${getAbilityBoost(gameState.playerCard, stat.key) ? "has-boost" : ""} ${!hasTutorialWin() && stat.key === recommendedStat.key ? "coach" : ""}" data-action="solo-stat" data-stat="${stat.key}" ${gameState.computerRevealed ? "disabled" : ""}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(gameState.playerCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${gameState.computerRevealed ? `<button class="pvx-next" data-action="next-solo">Next round →</button>` : `<span class="pvx-timer">◷ 20s</span>`}</section>
+      <main class="pvx-arena-board impact-${selected || "idle"} ${resolving ? "is-resolving" : ""} ${gameState.winner ? `result-${gameState.winner}` : ""}"><div class="pvx-arena-sky"></div><div class="pvx-arena-nebula nebula-one"></div><div class="pvx-arena-nebula nebula-two"></div><div class="pvx-arena-comet"></div><div class="pvx-arena-floor"></div><div class="pvx-arena-beam beam-left"></div><div class="pvx-arena-beam beam-right"></div><div class="pvx-arena-impact" aria-hidden="true"><i></i><i></i><i></i></div><div class="pvx-head-to-head player-side">${renderBattleCard(gameState.playerCard, "Your challenger", false, true)}${renderBattleHand(gameState.playerCard)}</div><section class="pvx-referee" aria-live="polite"><span><i></i> Head-to-head arena</span><div class="pvx-vs-core"><b>VS</b><i></i></div>${gameState.winner ? `<b class="pvx-round-verdict ${gameState.winner}">${outcomeLabel}</b>` : ""}<p class="${gameState.winner || ""}">${escapeHtml(resolving ? `${titleCase(selected)} locked. Reading rival response…` : gameState.resultMessage)}</p>${gameState.computerRevealed && selected ? `<div class="pvx-round-values">${renderRoundValue(result?.playerValue ?? getEffectiveStatValue(gameState.playerCard, selected), result?.playerBoost)}<span>${titleCase(selected)}</span>${renderRoundValue(result?.opponentValue ?? getEffectiveStatValue(gameState.computerCard, selected), result?.opponentBoost)}</div>` : `<small>${resolving ? "Rival card is resolving" : "Choose the stat that gives your pup the edge"}</small>`}</section><div class="pvx-head-to-head rival-side">${renderBattleCard(gameState.computerCard, "CPU challenger", !gameState.computerRevealed)}</div></main>
+      <section class="pvx-stat-dock"><div><small>${resolving ? "Stat locked" : gameState.computerRevealed ? "Official result" : "Your move"}</small><strong>${resolving ? "Rival is answering" : gameState.computerRevealed ? outcomeLabel : "Select one combat stat"}</strong>${!gameState.computerRevealed && !resolving && !hasTutorialWin() ? `<p class="pvx-first-battle-coach"><i>✦</i><span><b>Strong opening move</b> ${escapeHtml(recommendedStat.label)} is your highest stat at ${getEffectiveStatValue(gameState.playerCard, recommendedStat.key)}.</span></p>` : ""}</div><div class="pvx-stat-grid">${stats.map((stat) => `<button class="${getAbilityBoost(gameState.playerCard, stat.key) ? "has-boost" : ""} ${!hasTutorialWin() && stat.key === recommendedStat.key ? "coach" : ""} ${resolving && stat.key === selected ? "locked" : ""}" data-action="solo-stat" data-stat="${stat.key}" ${gameState.computerRevealed || resolving ? "disabled" : ""}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(gameState.playerCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${gameState.computerRevealed ? `<button class="pvx-next" data-action="next-solo">Next round →</button>` : resolving ? `<span class="pvx-timer">◷ Resolving</span>` : `<span class="pvx-timer">◷ 20s</span>`}</section>
     </section>`, "battle");
 }
 
@@ -1577,6 +1581,7 @@ async function handleClick(event) {
       }
       vaultDeckDraftIds = null;
       playHaptic([12, 28, 18]);
+      trackEvent("active_hand_saved", { source: backend.session ? "cloud" : "local" });
       notice("Active hand saved securely.");
     } catch (error) {
       notice(error.message || "Could not save your hand. Your previous active hand is still protected.");
@@ -1641,11 +1646,11 @@ async function handleClick(event) {
     renderApp();
     return notice(result.message || result.error || "Daily drop updated.");
   }
-  if (action === "tear-pack") { if (packOverlay?.phase !== "opening") return; packOverlay = { ...packOverlay, phase: "tearing" }; playHaptic([9, 18, 26]); renderApp(); clearTimeout(packTimer); packTimer = setTimeout(finishPackAnimation, 820); return; }
+  if (action === "tear-pack") { if (packOverlay?.phase !== "opening") return; trackEvent("first_foil_torn", { source: backend.session ? "cloud" : "local" }); packOverlay = { ...packOverlay, phase: "tearing" }; playHaptic([9, 18, 26]); renderApp(); clearTimeout(packTimer); packTimer = setTimeout(finishPackAnimation, 820); return; }
   if (action === "reveal-pack-card") { const index = Number(target.dataset.index); if (index !== packRevealIndex) return; if (revealedPackCards <= index) { revealedPackCards = index + 1; playHaptic(revealedPackCards === packOverlay?.cards?.length ? [15, 45, 28] : 12); } else if (index < (packOverlay?.cards?.length || 0) - 1) { packRevealIndex += 1; playHaptic([8, 20]); } return renderApp(); }
   if (action === "finish-reveal") { playHaptic([18, 35, 28]); packOverlay = null; return go("collection"); }
   if (action === "close-pack") { packOverlay = null; return renderApp(); }
-  if (action === "solo-stat") { chooseBattleStat(target.dataset.stat); if (gameState.winner === "player") playHaptic([18, 40, 28]); else if (gameState.winner === "computer") playHaptic(35); else playHaptic([10, 28, 10]); if (gameState.winner === "player" && gameState.playerWins === 1) trackEvent("first_battle_won"); return renderApp(); }
+  if (action === "solo-stat") { if (battleResolutionPending || gameState.computerRevealed) return; pendingBattleStat = target.dataset.stat; battleResolutionPending = true; trackEvent("solo_stat_selected", { stat: pendingBattleStat }); playHaptic(8); renderApp(); clearTimeout(battleResolveTimer); battleResolveTimer = setTimeout(() => { chooseBattleStat(pendingBattleStat); battleResolutionPending = false; pendingBattleStat = null; if (gameState.winner === "player") playHaptic([18, 40, 28]); else if (gameState.winner === "computer") playHaptic(35); else playHaptic([10, 28, 10]); trackEvent("solo_round_resolved", { outcome: gameState.winner || "draw" }); if (gameState.winner === "player" && gameState.playerWins === 1) trackEvent("first_battle_won"); renderApp(); }, 850); return; }
   if (action === "next-solo") { startComputerBattle(); return renderApp(); }
   if (action === "reset-solo") { resetGameStats(); startComputerBattle(); return renderApp(); }
   if (action === "online-home") { await removeArenaSubscriptions(); openArenaLeague(); return renderApp(); }
