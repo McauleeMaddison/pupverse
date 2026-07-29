@@ -1073,11 +1073,11 @@ function renderDeckBuilder() {
   const cardSlots = Array.from({ length: 5 }, (_, index) => {
     const card = deckCards[index];
     return card
-      ? `<button data-action="toggle-deck-card" data-card-id="${card.id}" aria-label="Remove ${escapeHtml(card.name)} from your draft hand">${renderCardImage(card)}<b>${escapeHtml(card.name)}</b></button>`
+      ? `<button data-action="toggle-deck-card" data-card-id="${card.id}" style="--hand-slot:${index};--hand-rise:${Math.abs(index - 2) * 6}px" aria-label="Remove ${escapeHtml(card.name)} from your draft hand">${renderCardImage(card)}<i aria-hidden="true">×</i><b>${escapeHtml(card.name)}</b></button>`
       : `<div><i>＋</i><small>Choose card</small></div>`;
   }).join("");
 
-  return `<section class="pvx-deck-builder pvx-hand-editor"><header><div><small>Active hand</small><h2>${ready ? "Five cards ready" : `${deckCards.length}/5 cards selected`}</h2></div><span>${changed ? "Unsaved changes" : "Saved hand"}</span></header><div class="pvx-deck-slots">${cardSlots}</div><p>${ready ? "Your draft is ready. Save it once to protect this five-card hand across devices." : "Tap Add hand on any vault card to build a five-card draft."}</p><footer><button data-action="discard-deck-draft" ${changed && !deckSaveInFlight ? "" : "disabled"}>Discard</button><button class="pvx-primary" data-action="save-active-deck" ${ready && changed && !deckSaveInFlight ? "" : "disabled"}>${deckSaveInFlight ? "Saving hand…" : changed ? "Save active hand →" : "Hand saved"}</button>${!changed && ready ? `<button data-action="go-battle">Battle now →</button>` : ""}</footer></section>`;
+  return `<section class="pvx-deck-builder pvx-hand-editor"><header><div><small>Active hand</small><h2>${ready ? "Five cards ready" : `${deckCards.length}/5 cards selected`}</h2></div><span>${changed ? "Unsaved changes" : "Saved"}</span></header><div class="pvx-deck-slots">${cardSlots}</div><p>${ready ? "Tap a card to remove it, then choose a replacement below." : "Choose five cards below to build your battle hand."}</p><footer>${changed ? `<button data-action="discard-deck-draft" ${deckSaveInFlight ? "disabled" : ""}>Discard</button><button class="pvx-primary" data-action="save-active-deck" ${ready && !deckSaveInFlight ? "" : "disabled"}>${deckSaveInFlight ? "Saving…" : "Save hand →"}</button>` : ready ? `<button class="pvx-primary" data-action="go-battle">Battle now →</button>` : ""}</footer></section>`;
 }
 
 function renderComparePanel() {
