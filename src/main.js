@@ -1014,11 +1014,11 @@ function renderDailyOps() {
           <h1>DAILY <span>OPS</span></h1>
           <p>Four focused challenges. One premium drop. Complete the board before the next refresh and keep your streak alive.</p>
         </div>
-        <div class="pvx-daily-reset"><small>Next refresh</small><strong>${dailyBoard.refreshesIn}</strong><span>${dailyBoard.completedCount}/${dailyBoard.totalTasks} complete</span></div>
+        <div class="pvx-daily-reset"><small>Next refresh</small><strong>${dailyBoard.refreshesIn}</strong><span>${dailyBoard.completedCount}/${dailyBoard.totalTasks} complete</span><i style="--daily-progress:${Math.round((dailyBoard.completedCount / dailyBoard.totalTasks) * 100)}%"></i></div>
       </header>
       <div class="pvx-daily-page-layout">
         <section class="pvx-daily-missions">
-          <div class="pvx-daily-section-label"><span>Today’s challenges</span><div><small class="pvx-daily-streak">♨ ${streak} day streak</small><small>${dailyBoard.completedCount === dailyBoard.totalTasks ? "Board complete" : "Keep going"}</small></div></div>
+          <div class="pvx-daily-section-label"><div><small>Mission board</small><span>Today’s challenges</span></div><div><small class="pvx-daily-streak">♨ ${streak} day streak</small><small>${dailyBoard.completedCount === dailyBoard.totalTasks ? "Board complete" : `${remaining} left`}</small></div></div>
           <section class="pvx-daily-next ${dailyBoard.canClaim ? "ready" : ""} ${dailyBoard.rewardClaimed ? "claimed" : ""}" aria-live="polite"><div><small>${escapeHtml(nextAction.eyebrow)}</small><h2>${escapeHtml(nextAction.title)}</h2><p>${escapeHtml(nextAction.copy)}</p></div><button data-action="${nextAction.action}">${escapeHtml(nextAction.label)} <i>→</i></button></section>
           <div class="pvx-daily-task-grid">${dailyBoard.tasks.map(renderDailyTask).join("")}</div>
         </section>
