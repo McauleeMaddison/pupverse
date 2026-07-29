@@ -986,7 +986,7 @@ function renderHome() {
         </div>
         ${renderHomeDeckHand()}
       </section>
-      <section class="pvx-home-command"><div class="pvx-core-actions">${coreActions.map(renderCoreActionCard).join("")}</div>${renderHomeMissionSummary(dailyBoard)}</section>
+      <section class="pvx-home-command pvx-home-command-streamlined">${renderHomeMissionSummary(dailyBoard)}</section>
       ${showOnboarding ? `<aside class="pvx-onboarding" aria-label="Getting started"><div><p class="pvx-eyebrow"><i></i> Your first three moves</p><h2>Start simple. Build momentum.</h2><p>Every first session follows the same satisfying loop—battle, collect, return.</p></div><ol><li><b>01</b><span><strong>Battle</strong><small>Choose a stat and take your first round.</small></span></li><li><b>02</b><span><strong>Open a pack</strong><small>Turn your win into fresh tactical options.</small></span></li><li><b>03</b><span><strong>Visit Daily Ops</strong><small>Complete missions for a bonus drop.</small></span></li></ol><button data-action="dismiss-onboarding">I’m ready <i>→</i></button></aside>` : ""}
     </section>`, "home");
 }
