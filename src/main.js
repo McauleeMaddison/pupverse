@@ -1258,6 +1258,8 @@ function renderApp() {
   };
   document.body.classList.toggle("pvx-modal-open", Boolean(selectedVaultCardId || packOverlay));
   document.body.classList.toggle("pvx-large-text", largeTextEnabled);
+  const lowPowerDevice = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+  document.body.classList.toggle("pvx-performance-mode", Boolean(lowPowerDevice));
   setupImageFallbacks();
   setupHomeDeckOrbit();
   startAnimatedBackground();
