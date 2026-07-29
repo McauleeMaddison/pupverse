@@ -653,6 +653,20 @@ export function toggleActiveDeckCard(cardId) {
   return { ok: true, active: true };
 }
 
+export function setActiveDeckCardIds(cardIds) {
+  const owned = new Set(gameState.collection);
+  const nextDeck = [...new Set(Array.isArray(cardIds) ? cardIds : [])]
+    .filter((cardId) => owned.has(cardId));
+
+  if (nextDeck.length !== 5) {
+    return { ok: false, error: "An active hand must contain exactly five owned cards." };
+  }
+
+  gameState.activeDeckCardIds = nextDeck;
+  saveGame();
+  return { ok: true };
+}
+
 export function getCollectionProgress() {
   const uniqueOwnedIds = new Set(gameState.collection);
   const uniqueOwned = uniqueOwnedIds.size;

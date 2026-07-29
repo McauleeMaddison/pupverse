@@ -17,7 +17,7 @@ import {
   setCollectionSort,
   toggleFavouriteCard,
   getActiveDeckCardIds,
-  toggleActiveDeckCard,
+  setActiveDeckCardIds,
   addDevCoins,
   getStatValue,
   openArenaLeague,
@@ -128,6 +128,8 @@ let activeInfoPanel = null;
 let onlineStatus = navigator.onLine;
 let deferredInstallPrompt = null;
 let compareCardIds = [];
+let vaultDeckDraftIds = null;
+let deckSaveInFlight = false;
 const TEXT_SIZE_STORAGE_KEY = "pupverse-large-text";
 let largeTextEnabled = window.localStorage?.getItem(TEXT_SIZE_STORAGE_KEY) === "true";
 const ONBOARDING_STORAGE_KEY = "pupverse-beta-onboarding-dismissed";
@@ -1047,15 +1049,35 @@ function renderShop() {
 function renderVaultCard(card, index) {
   const strongest = stats.reduce((best, stat) => getStatValue(card, stat.key) > getStatValue(card, best.key) ? stat : best, stats[0]);
   const favourite = gameState.favouriteCards.includes(card.id);
-  const inDeck = getActiveDeckCardIds().includes(card.id);
+  const inDeck = getVaultDeckDraftIds().includes(card.id);
   const compared = compareCardIds.includes(card.id);
-  return `<article class="pvx-vault-card" style="--delay:${Math.min(index, 12) * .045}s"><button class="pvx-vault-card-main" data-action="preview-card" data-card-id="${card.id}"><div class="pvx-vault-image"><span class="pvx-rarity rarity-${card.rarity.toLowerCase()}">${escapeHtml(card.rarity)}</span>${card.count > 1 ? `<span class="pvx-quantity">×${card.count}</span>` : ""}${renderCardImage(card)}<div class="pvx-card-sheen"></div><span class="pvx-inspect">Inspect card <i>↗</i></span></div><div class="pvx-vault-copy"><small>${escapeHtml(card.pack)}</small><h3>${escapeHtml(card.name)}</h3><p>${escapeHtml(card.element)}</p><div><span>${strongest.short}</span><strong>${getStatValue(card, strongest.key)}</strong><i style="width:${getStatValue(card, strongest.key)}%"></i></div></div></button><footer><button class="${favourite ? "active" : ""}" data-action="toggle-favourite" data-card-id="${card.id}" aria-label="${favourite ? "Remove" : "Add"} ${escapeHtml(card.name)} ${favourite ? "from" : "to"} favourites">${favourite ? "♥" : "♡"}</button><button class="${inDeck ? "active" : ""}" data-action="toggle-deck-card" data-card-id="${card.id}">${inDeck ? "In deck" : "Add deck"}</button><button class="${compared ? "active" : ""}" data-action="toggle-compare" data-card-id="${card.id}" ${!compared && compareCardIds.length >= 2 ? "disabled" : ""}>${compared ? "Selected" : "Compare"}</button></footer></article>`;
+  return `<article class="pvx-vault-card" style="--delay:${Math.min(index, 12) * .045}s"><button class="pvx-vault-card-main" data-action="preview-card" data-card-id="${card.id}"><div class="pvx-vault-image"><span class="pvx-rarity rarity-${card.rarity.toLowerCase()}">${escapeHtml(card.rarity)}</span>${card.count > 1 ? `<span class="pvx-quantity">×${card.count}</span>` : ""}${renderCardImage(card)}<div class="pvx-card-sheen"></div><span class="pvx-inspect">Inspect card <i>↗</i></span></div><div class="pvx-vault-copy"><small>${escapeHtml(card.pack)}</small><h3>${escapeHtml(card.name)}</h3><p>${escapeHtml(card.element)}</p><div><span>${strongest.short}</span><strong>${getStatValue(card, strongest.key)}</strong><i style="width:${getStatValue(card, strongest.key)}%"></i></div></div></button><footer><button class="${favourite ? "active" : ""}" data-action="toggle-favourite" data-card-id="${card.id}" aria-label="${favourite ? "Remove" : "Add"} ${escapeHtml(card.name)} ${favourite ? "from" : "to"} favourites">${favourite ? "♥" : "♡"}</button><button class="${inDeck ? "active" : ""}" data-action="toggle-deck-card" data-card-id="${card.id}" aria-pressed="${inDeck}">${inDeck ? "In hand" : "Add hand"}</button><button class="${compared ? "active" : ""}" data-action="toggle-compare" data-card-id="${card.id}" ${!compared && compareCardIds.length >= 2 ? "disabled" : ""}>${compared ? "Selected" : "Compare"}</button></footer></article>`;
+}
+
+function getVaultDeckDraftIds() {
+  if (!vaultDeckDraftIds) vaultDeckDraftIds = [...getActiveDeckCardIds()];
+  return vaultDeckDraftIds;
+}
+
+function hasVaultDeckDraftChanges() {
+  const active = getActiveDeckCardIds();
+  const draft = getVaultDeckDraftIds();
+  return active.length !== draft.length || active.some((cardId, index) => cardId !== draft[index]);
 }
 
 function renderDeckBuilder() {
-  const deckCards = getActiveDeckCardIds().map((id) => cards.find((card) => card.id === id)).filter(Boolean);
+  const draft = getVaultDeckDraftIds();
+  const deckCards = draft.map((id) => cards.find((card) => card.id === id)).filter(Boolean);
   const ready = deckCards.length === 5;
-  return `<section class="pvx-deck-summary"><div><small>Battle deck</small><strong>${ready ? "Ready to play" : `${deckCards.length}/5 selected`}</strong><p>${ready ? deckCards.map((card) => escapeHtml(card.name)).join(" · ") : "Use the Deck control on any card below to build your five-card squad."}</p></div><button data-action="${ready ? "go-battle" : "go-vault"}" ${ready ? "" : "disabled"}>${ready ? "Battle now →" : "Choose cards"}</button></section>`;
+  const changed = hasVaultDeckDraftChanges();
+  const cardSlots = Array.from({ length: 5 }, (_, index) => {
+    const card = deckCards[index];
+    return card
+      ? `<button data-action="toggle-deck-card" data-card-id="${card.id}" aria-label="Remove ${escapeHtml(card.name)} from your draft hand">${renderCardImage(card)}<b>${escapeHtml(card.name)}</b></button>`
+      : `<div><i>＋</i><small>Choose card</small></div>`;
+  }).join("");
+
+  return `<section class="pvx-deck-builder pvx-hand-editor"><header><div><small>Active hand</small><h2>${ready ? "Five cards ready" : `${deckCards.length}/5 cards selected`}</h2></div><span>${changed ? "Unsaved changes" : "Saved hand"}</span></header><div class="pvx-deck-slots">${cardSlots}</div><p>${ready ? "Your draft is ready. Save it once to protect this five-card hand across devices." : "Tap Add hand on any vault card to build a five-card draft."}</p><footer><button data-action="discard-deck-draft" ${changed && !deckSaveInFlight ? "" : "disabled"}>Discard</button><button class="pvx-primary" data-action="save-active-deck" ${ready && changed && !deckSaveInFlight ? "" : "disabled"}>${deckSaveInFlight ? "Saving hand…" : changed ? "Save active hand →" : "Hand saved"}</button>${!changed && ready ? `<button data-action="go-battle">Battle now →</button>` : ""}</footer></section>`;
 }
 
 function renderComparePanel() {
@@ -1068,14 +1090,16 @@ function renderCollection() {
   const progress = getCollectionProgress();
   const filtered = getFilteredCollectionCards();
   const counts = { All: progress.uniqueOwned, Favourites: gameState.favouriteCards.length, Duplicates: progress.duplicateCount, CryptoPups: progress.cryptoOwned, CyberPups: progress.cyberOwned, AlienPups: progress.alienOwned };
+  const browsingAll = gameState.collectionFilter === "All" && gameState.collectionSort === "newest";
   return renderShell(`
     <section class="pvx-page pvx-vault">
       <header class="pvx-page-header vault-header"><div><p class="pvx-eyebrow"><i></i> Your cosmic archive</p><h1>COLLECTION <span>VAULT</span></h1><p>Every pup you discover lives here. Inspect a card to reveal its full holographic data.</p></div><div class="pvx-vault-meter"><div><strong>${progress.percentage}%</strong><small>complete</small></div><span><i style="--progress:${progress.percentage * 3.6}deg"></i></span></div></header>
       <section class="pvx-vault-summary"><article><span>◇</span><div><small>Unique pups</small><strong>${progress.uniqueOwned}<i> / ${progress.totalCards}</i></strong></div></article><article><span>✦</span><div><small>Total cards</small><strong>${gameState.collection.length}</strong></div></article><article><span>⧉</span><div><small>Duplicates</small><strong>${progress.duplicateCount}</strong></div></article><article class="wide"><div><small>Archive completion</small><strong>${progress.percentage}%</strong></div><div class="pvx-progress"><i style="width:${progress.percentage}%"></i></div></article></section>
       ${renderDeckBuilder()}
       ${renderComparePanel()}
-      <nav class="pvx-filterbar" aria-label="Collection filters">${Object.entries(counts).map(([name, count]) => `<button class="${gameState.collectionFilter === name ? "active" : ""}" data-action="filter-vault" data-filter="${name}"><span>${name}</span><b>${count}</b></button>`).join("")}</nav>
+      <nav class="pvx-filterbar" aria-label="Collection filters">${Object.entries(counts).map(([name, count]) => `<button class="${gameState.collectionFilter === name ? "active" : ""}" data-action="filter-vault" data-filter="${name}" aria-pressed="${gameState.collectionFilter === name}"><span>${name}</span><b>${count}</b></button>`).join("")}</nav>
       <nav class="pvx-vault-sort" aria-label="Sort collection"><span>Sort</span>${["newest", "rarity", "duplicates", "name"].map((sort) => `<button class="${gameState.collectionSort === sort ? "active" : ""}" data-action="sort-vault" data-sort="${sort}">${titleCase(sort)}</button>`).join("")}</nav>
+      <div class="pvx-vault-browse-status" aria-live="polite"><span>${filtered.length} ${filtered.length === 1 ? "card" : "cards"} shown</span><small>${escapeHtml(gameState.collectionFilter)} · ${escapeHtml(titleCase(gameState.collectionSort))}</small>${browsingAll ? "" : `<button data-action="clear-vault-browse">Reset view</button>`}</div>
       <section class="pvx-vault-grid">${filtered.length ? filtered.map(renderVaultCard).join("") : `<div class="pvx-empty vault-empty"><span>◇</span><h3>This vault wing is waiting</h3><p>Open matching packs to discover pups from this universe.</p><button data-action="go-shop">Open pack shop</button></div>`}</section>
     </section>
     ${renderCardModal()}`, "collection");
@@ -1493,8 +1517,9 @@ async function handleClick(event) {
       return;
     }
   }
-  if (action === "filter-vault") { setCollectionFilter(target.dataset.filter); return renderApp(); }
-  if (action === "sort-vault") { setCollectionSort(target.dataset.sort); return renderApp(); }
+  if (action === "filter-vault") { setCollectionFilter(target.dataset.filter); playHaptic(6); return renderApp(); }
+  if (action === "sort-vault") { setCollectionSort(target.dataset.sort); playHaptic(6); return renderApp(); }
+  if (action === "clear-vault-browse") { setCollectionFilter("All"); setCollectionSort("newest"); playHaptic(8); return renderApp(); }
   if (action === "toggle-compare") {
     const cardId = target.dataset.cardId;
     compareCardIds = compareCardIds.includes(cardId) ? compareCardIds.filter((id) => id !== cardId) : [...compareCardIds, cardId].slice(0, 2);
@@ -1502,26 +1527,47 @@ async function handleClick(event) {
   }
   if (action === "clear-compare") { compareCardIds = []; return renderApp(); }
   if (action === "toggle-deck-card") {
-    const previousDeck = [...getActiveDeckCardIds()];
-    const result = toggleActiveDeckCard(target.dataset.cardId);
-    if (!result.ok) notice(result.error);
-    if (result.ok && backend.configured && backend.session) {
-      const deckCardIds = getActiveDeckCardIds();
-      if (deckCardIds.length !== 5) {
-        gameState.activeDeckCardIds = previousDeck;
-        notice("A synced active deck must contain exactly five cards.");
-      } else {
-        try {
-          await updateRemoteDeck(deckCardIds, crypto.randomUUID());
-          await refreshPlayerData();
-          notice("Active deck saved securely.");
-        } catch (error) {
-          gameState.activeDeckCardIds = previousDeck;
-          notice(error.message || "Could not save the deck. Your previous deck is still active.");
-        }
-      }
+    const cardId = target.dataset.cardId;
+    const draft = getVaultDeckDraftIds();
+    if (draft.includes(cardId)) {
+      vaultDeckDraftIds = draft.filter((id) => id !== cardId);
+      playHaptic(8);
+    } else if (draft.length >= 5) {
+      notice("Your draft hand already has five cards. Remove one before adding another.");
+    } else {
+      vaultDeckDraftIds = [...draft, cardId];
+      playHaptic([8, 16]);
     }
     return renderApp();
+  }
+  if (action === "discard-deck-draft") {
+    vaultDeckDraftIds = [...getActiveDeckCardIds()];
+    return renderApp();
+  }
+  if (action === "save-active-deck") {
+    const draft = [...getVaultDeckDraftIds()];
+    if (deckSaveInFlight) return;
+    if (draft.length !== 5) return notice("Choose exactly five cards before saving your active hand.");
+    deckSaveInFlight = true;
+    renderApp();
+    try {
+      if (backend.configured && backend.session) {
+        await updateRemoteDeck(draft, crypto.randomUUID());
+        await refreshPlayerData();
+      } else {
+        const result = setActiveDeckCardIds(draft);
+        if (!result.ok) throw new Error(result.error);
+      }
+      vaultDeckDraftIds = null;
+      playHaptic([12, 28, 18]);
+      notice("Active hand saved securely.");
+    } catch (error) {
+      notice(error.message || "Could not save your hand. Your previous active hand is still protected.");
+    } finally {
+      deckSaveInFlight = false;
+      renderApp();
+    }
+    return;
   }
   if (action === "toggle-favourite") {
     const cardId = target.dataset.cardId;
