@@ -47,5 +47,7 @@ Keep Ranked disabled until every test passes on production.
   and Redirect URLs.
 - Deploy `arena`, `progression`, and `arena-cron`; configure the cron secret in
   a trusted scheduler, never in Render frontend variables.
-- Add a real support address or replace the temporary GitHub feedback URL in
-  `src/main.js` before the beta announcement.
+- The in-game **Feedback** link opens a pre-filled beta issue with
+  browser, platform, and viewport details. Keep the repository issue tracker
+  monitored, or replace `FEEDBACK_URL` in `src/main.js` with your support form
+  before a wider announcement.

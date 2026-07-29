@@ -15,7 +15,7 @@ randomness, updates owned-card quantities, debits coins, and records the opening
 one transaction. Direct browser writes to quantities and ownership are revoked.
 
 Active decks and referral rewards use the same trust boundary. A signed-in browser
-sends exactly three card IDs plus an idempotency key to `progression`; PostgreSQL
+sends exactly five card IDs plus an idempotency key to `progression`; PostgreSQL
 verifies ownership, replaces the active deck in one transaction, and records the
 request. Invite codes and referral claims are server-issued and one-time only.
 
@@ -56,7 +56,9 @@ automated anonymous-account creation.
 1. Create a Supabase project.
 2. Link it with `npx supabase link --project-ref <project-ref>`.
 3. Apply schema and seed data with `npx supabase db push --include-seed`. This includes
-   `202607270001_protected_decks_and_referrals.sql`, which revokes direct deck writes.
+   `202607270001_protected_decks_and_referrals.sql` and
+   `202607270003_five_card_active_hands.sql`, which revoke direct deck writes and
+   enforce five-card active hands.
 4. Deploy functions with `npx supabase functions deploy arena`,
    `npx supabase functions deploy progression`, and
    `npx supabase functions deploy arena-cron --no-verify-jwt`.
@@ -71,7 +73,8 @@ automated anonymous-account creation.
 
 Use two isolated browser profiles and two different email accounts.
 
-1. Confirm each signup creates a profile, three starter cards, and an active starter deck.
+1. Confirm each signup creates a profile, five starter cards, a five-card active deck,
+   and a daily board.
 2. Queue both users in Casual and confirm they receive the same match ID.
 3. Verify only the active player can resolve a round and repeated action nonces are idempotent.
 4. Attempt an invalid stat, a second action in the same round, and an action from the wrong player.
@@ -85,7 +88,7 @@ Use two isolated browser profiles and two different email accounts.
     the same request ID returns the same opening without a second debit.
 11. Attempt direct inserts, quantity changes, deck/deck-card writes, coin changes, and
     another player's Vault reads through the browser client; every request must be
-    rejected by grants/RLS. Save a legal three-card deck through `progression` and
+    rejected by grants/RLS. Save a legal five-card deck through `progression` and
     confirm it succeeds; retry the same request ID and confirm it is replayed.
 12. Create an anonymous player, open a pack, link an email or Google identity, and
     confirm the same player ID, balance, cards, favourites, and deck remain available.

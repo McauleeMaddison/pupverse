@@ -131,7 +131,17 @@ let compareCardIds = [];
 const TEXT_SIZE_STORAGE_KEY = "pupverse-large-text";
 let largeTextEnabled = window.localStorage?.getItem(TEXT_SIZE_STORAGE_KEY) === "true";
 const ONBOARDING_STORAGE_KEY = "pupverse-beta-onboarding-dismissed";
-const FEEDBACK_URL = "https://github.com/McauleeMaddison/pupverse/issues/new?title=PupVerse%20beta%20feedback";
+const DAILY_COMPLETION_ANALYTICS_KEY = "pupverse-daily-completion:";
+const FEEDBACK_URL = "https://github.com/McauleeMaddison/pupverse/issues/new";
+
+function getFeedbackUrl() {
+  const url = new URL(FEEDBACK_URL);
+  const viewport = `${window.innerWidth || "?"} × ${window.innerHeight || "?"}`;
+  const platform = navigator.userAgentData?.platform || navigator.platform || "Unknown platform";
+  url.searchParams.set("title", "PupVerse beta feedback");
+  url.searchParams.set("body", `## What happened?\n<!-- Briefly tell us what you were trying to do and what went wrong. -->\n\n## What did you expect?\n\n## Device details\n- Platform: ${platform}\n- Browser: ${navigator.userAgent}\n- Viewport: ${viewport}\n- Signed in: yes / no\n\n<!-- Please do not include your password, email address, or private account details. -->`);
+  return url.toString();
+}
 const RANKED_BETA_ENABLED = false;
 
 const backend = {
@@ -897,6 +907,27 @@ function getActiveDailyBoard() {
   };
 }
 
+function trackDailyBoardCompletion(board = getActiveDailyBoard()) {
+  const total = Number(board?.totalTasks || 0);
+  const completed = Number(board?.completedCount || 0);
+  if (!total || completed < total) return;
+
+  const source = backend.session?.user ? "cloud" : "local";
+  const player = backend.session?.user?.id || "device";
+  const boardKey = board?.id || board?.cycleKey || board?.refreshAt || "current";
+  const storageKey = `${DAILY_COMPLETION_ANALYTICS_KEY}${source}:${player}:${boardKey}`;
+
+  try {
+    if (window.localStorage?.getItem(storageKey)) return;
+    window.localStorage?.setItem(storageKey, "true");
+  } catch {
+    // Do not risk duplicate analytics if browser storage is unavailable.
+    return;
+  }
+
+  trackEvent("daily_board_completed", { source });
+}
+
 function renderHomeDeckHand() {
   const deckCards = getActiveDeckCardIds().map((id) => cards.find((card) => card.id === id)).filter(Boolean);
   const ready = deckCards.length === 5;
@@ -1260,6 +1291,7 @@ function renderApp() {
   document.body.classList.toggle("pvx-large-text", largeTextEnabled);
   const lowPowerDevice = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || (navigator.deviceMemory && navigator.deviceMemory <= 4);
   document.body.classList.toggle("pvx-performance-mode", Boolean(lowPowerDevice));
+  trackDailyBoardCompletion();
   setupImageFallbacks();
   setupHomeDeckOrbit();
   startAnimatedBackground();
@@ -1407,7 +1439,7 @@ async function handleClick(event) {
     deferredInstallPrompt = null;
     return renderApp();
   }
-  if (action === "open-feedback") { trackEvent("feedback_opened"); window.open(FEEDBACK_URL, "_blank", "noopener,noreferrer"); return; }
+  if (action === "open-feedback") { trackEvent("feedback_opened"); window.open(getFeedbackUrl(), "_blank", "noopener,noreferrer"); return; }
   if (action === "dismiss-onboarding") { try { window.localStorage?.setItem(ONBOARDING_STORAGE_KEY, "true"); } catch {} return renderApp(); }
   if (action === "go-home") {
     if (backend.session?.user) {
