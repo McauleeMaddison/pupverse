@@ -1587,6 +1587,7 @@ async function handleClick(event) {
     if (backend.configured && backend.session && !onlineStatus) return notice("You’re offline. Reconnect before opening a synced pack so your coins stay protected.");
     if (!startPackOpening(target.dataset.packId)) return renderApp();
     packOverlay = { phase: "opening", packId: target.dataset.packId, requestId: crypto.randomUUID() };
+    playHaptic([8, 22, 10]);
     renderApp();
     clearTimeout(packTimer);
     packTimer = setTimeout(finishPackAnimation, 2800);
