@@ -123,6 +123,7 @@ let matchmakingTimer = null;
 let subscribedMatchId = null;
 let packOverlay = null;
 let revealedPackCards = 0;
+let packRevealIndex = 0;
 let packOpeningRequestInFlight = false;
 let activeInfoPanel = null;
 let onlineStatus = navigator.onLine;
@@ -1031,9 +1032,8 @@ function renderDailyOps() {
 }
 
 function renderPackCard(pack) {
-  const packCards = cards.filter((card) => card.pack === pack.cardPackName).slice(0, 3);
   const canAfford = gameState.coins >= pack.cost;
-  return `<article class="pvx-pack-card ${pack.themeClass} ${canAfford ? "" : "locked"}"><div class="pvx-pack-aurora"></div><div class="pvx-pack-fan">${packCards.map((card, index) => renderCardImage(card, `fan-${index + 1}`)).join("")}</div><div class="pvx-pack-capsule"><div class="pvx-pack-lid"></div><div class="pvx-pack-body"><span>${pack.icon}</span><i></i></div></div><span class="pvx-pack-type">${escapeHtml(pack.name)}</span><h2>${escapeHtml(pack.cardPackName)}</h2><p>${escapeHtml(pack.description)}</p><div class="pvx-pack-meta"><span>${pack.amount} cards</span><span>◈ ${pack.cost}</span></div><button data-action="open-pack" data-pack-id="${pack.id}" ${canAfford ? "" : "disabled"}>${canAfford ? "Open cosmic pack" : `Need ${pack.cost - gameState.coins} more coins`}<span>→</span></button></article>`;
+  return `<article class="pvx-pack-card ${pack.themeClass} ${canAfford ? "" : "locked"}"><div class="pvx-shop-pack-display" aria-hidden="true"><div class="pvx-shop-foil"><span class="pvx-shop-foil-top"></span><span class="pvx-shop-foil-front"><i>${pack.icon}</i><small>${escapeHtml(pack.name)}</small><b>THREE CARD<br>FOIL PACK</b><em>PV</em></span><span class="pvx-shop-foil-seal"></span></div></div><span class="pvx-pack-type">${escapeHtml(pack.name)}</span><h2>${escapeHtml(pack.cardPackName)}</h2><p>${escapeHtml(pack.description)}</p><div class="pvx-pack-meta"><span>${pack.amount} cards</span><span>◈ ${pack.cost}</span></div><button data-action="open-pack" data-pack-id="${pack.id}" ${canAfford ? "" : "disabled"}>${canAfford ? "Open foil pack" : `Need ${pack.cost - gameState.coins} more coins`}<span>→</span></button></article>`;
 }
 
 function renderShop() {
@@ -1044,6 +1044,21 @@ function renderShop() {
       <section class="pvx-pack-grid">${packs.map(renderPackCard).join("")}</section>
       <section class="pvx-latest"><div class="pvx-section-title"><div><p class="pvx-eyebrow"><i></i> Recently discovered</p><h2>Latest pulls</h2></div><button data-action="go-vault">View full vault →</button></div><div class="pvx-latest-grid">${gameState.lastOpenedPack.length ? gameState.lastOpenedPack.map((card, index) => `<button class="pvx-latest-card" style="--delay:${index * .12}s" data-action="preview-card" data-card-id="${card.id}">${renderCardImage(card)}<span><small>${escapeHtml(card.rarity)}</small><b>${escapeHtml(card.name)}</b><em>${escapeHtml(card.element)}</em></span></button>`).join("") : `<div class="pvx-empty"><span>✦</span><h3>Your next discovery starts here</h3><p>Open a pack and your newest pups will land in this showcase.</p></div>`}</div></section>
     </section>`, "shop");
+}
+
+function renderSequentialPackReveal(pack, pulls, walkout) {
+  const allRevealed = pulls.length > 0 && revealedPackCards >= pulls.length;
+  const index = Math.min(packRevealIndex, Math.max(pulls.length - 1, 0));
+  const card = pulls[index];
+  const revealed = revealedPackCards > index;
+  const rarity = String(card?.rarity || "standard").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const nextCard = index < pulls.length - 1;
+  const instruction = !revealed
+    ? "Tap the sealed card to reveal it."
+    : nextCard
+      ? "Tap the revealed card to bring forward the next pull."
+      : "Your three-card pull is secured in the Vault.";
+  return `<section class="pvx-pack-overlay reveal pvx-sequential-reveal ${walkout ? "pvx-pack-walkout" : ""} ${pack.themeClass}" aria-live="polite"><div class="pvx-opening-stars"></div><div class="pvx-reveal-radiance" aria-hidden="true"></div>${walkout ? `<div class="pvx-walkout-lights" aria-hidden="true"><i></i><i></i></div>` : ""}<p class="pvx-eyebrow"><i></i> ${walkout ? "Prestige pull detected" : "Pack unsealed"}</p><h1>${allRevealed ? "VAULT <span>SECURED</span>" : "CARD <span>${index + 1} / ${pulls.length}</span>"}</h1><p class="pvx-reveal-status"><b>${revealed ? (allRevealed ? "Complete set revealed" : "Card secured") : `Sealed pull ${index + 1} of ${pulls.length}`}</b><span>${instruction}</span></p><div class="pvx-reveal-grid pvx-reveal-single ${allRevealed ? "complete" : ""}"><button class="pvx-reveal-card rarity-${rarity} ${revealed ? "revealed" : ""}" style="--delay:0s;--tilt:0deg" data-action="reveal-pack-card" data-index="${index}" aria-label="${revealed ? (nextCard ? `Show card ${index + 2}` : `${escapeHtml(card.name)} revealed`) : `Reveal card ${index + 1}`}"><div class="pvx-reveal-inner"><div class="pvx-reveal-back"><i class="pvx-reveal-sigil">✦</i><span>PV</span><b>?</b><small>Tap to break seal</small></div><div class="pvx-reveal-front"><div class="pvx-card-hologram" aria-hidden="true"></div>${renderCardImage(card)}<div><small>${escapeHtml(card.rarity)}</small><h2>${escapeHtml(card.name)}</h2><p>${escapeHtml(card.element)}</p></div></div></div></button></div>${allRevealed ? `<div class="pvx-vault-arrival" aria-live="polite"><span>✦</span><div><b>${pulls.length} new cards secured</b><small>Transferred into your Collection Vault</small></div><i>◆</i></div>` : ""}<div class="pvx-reveal-actions">${allRevealed ? `<button class="pvx-primary" data-action="finish-reveal">Open Collection Vault →</button>` : ""}<button data-action="close-pack">Back to shop</button></div></section>`;
 }
 
 function renderVaultCard(card, index) {
@@ -1284,10 +1299,11 @@ function renderPackOverlay() {
   if (!packOverlay) return "";
   const pack = packs.find((item) => item.id === packOverlay.packId);
   if (!pack) return "";
-  if (packOverlay.phase === "opening") return `<section class="pvx-pack-overlay ${pack.themeClass}" aria-live="polite"><div class="pvx-opening-stars"></div><div class="pvx-opening-atmosphere" aria-hidden="true"><i></i><i></i><i></i><i></i></div><div class="pvx-opening-core" aria-hidden="true"></div><div class="pvx-opening-ring ring-one"></div><div class="pvx-opening-ring ring-two"></div><p class="pvx-eyebrow"><i></i> ${escapeHtml(pack.name)}</p><h1>COSMIC <span>UNSEALING</span></h1><div class="pvx-opening-pack"><div class="pvx-opening-shards" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><div class="pvx-opening-lid"></div><div class="pvx-opening-body"><span>${pack.icon}</span><i></i></div><div class="pvx-opening-energy"></div></div><div class="pvx-opening-status"><span><i></i></span><b>Securing your pull</b><small>Coins are charged once. Your cards are next.</small></div><button data-action="skip-pack">Reveal now</button></section>`;
+  if (["opening", "tearing"].includes(packOverlay.phase)) return `<section class="pvx-pack-overlay pvx-foil-opening ${packOverlay.phase === "tearing" ? "is-tearing" : ""} ${pack.themeClass}" aria-live="polite"><div class="pvx-opening-stars"></div><div class="pvx-opening-core" aria-hidden="true"></div><div class="pvx-opening-ring ring-one"></div><div class="pvx-opening-ring ring-two"></div><p class="pvx-eyebrow"><i></i> ${escapeHtml(pack.name)}</p><h1>${packOverlay.phase === "tearing" ? "FOIL <span>TORN</span>" : "TEAR THE <span>FOIL</span>"}</h1><p class="pvx-foil-opening-copy">${packOverlay.phase === "tearing" ? "The pull is breaking through…" : "One pack. Three possible discoveries. Tear the seal to reveal card one."}</p><button class="pvx-opening-foil" data-action="tear-pack" aria-label="Tear open ${escapeHtml(pack.name)}" ${packOverlay.phase === "tearing" ? "disabled" : ""}><span class="pvx-opening-foil-top"></span><span class="pvx-opening-foil-left"></span><span class="pvx-opening-foil-right"></span><span class="pvx-opening-foil-face"><i>${pack.icon}</i><small>${escapeHtml(pack.cardPackName)}</small><b>THREE CARD<br>FOIL PACK</b><em>TEAR HERE</em></span><span class="pvx-opening-foil-rip"></span></button>${packOverlay.phase === "opening" ? `<button class="pvx-foil-tear-cta" data-action="tear-pack">Tear open <span>→</span></button>` : `<div class="pvx-opening-status"><span><i></i></span><b>Pull secured</b><small>Preparing card one of three.</small></div>`}</section>`;
   const pulls = packOverlay.cards || [];
   const allRevealed = pulls.length > 0 && revealedPackCards >= pulls.length;
   const walkout = pulls.some((card) => ["mythic", "legendary"].includes(String(card.rarity || "").toLowerCase()));
+  return renderSequentialPackReveal(pack, pulls, walkout);
   return `<section class="pvx-pack-overlay reveal ${walkout ? "pvx-pack-walkout" : ""} ${pack.themeClass}" aria-live="polite"><div class="pvx-opening-stars"></div><div class="pvx-reveal-radiance" aria-hidden="true"></div>${walkout ? `<div class="pvx-walkout-lights" aria-hidden="true"><i></i><i></i></div>` : ""}<p class="pvx-eyebrow"><i></i> ${walkout ? "Prestige pull detected" : "Pack unsealed"}</p><h1>${walkout ? "THE VAULT <span>OPENS</span>" : "YOUR NEW <span>PUPS</span>"}</h1><p class="pvx-reveal-status"><b>${allRevealed ? "Vault updated" : `${revealedPackCards + 1} of ${pulls.length} ready to reveal`}</b><span>${allRevealed ? "Every pull is safely in your collection." : walkout ? "A prestige signature is waiting. Break each seal." : "Tap the next card to break its seal, or reveal the full set."}</span></p><div class="pvx-reveal-grid ${allRevealed ? "complete" : ""}">${pulls.map((card, index) => { const rarity = String(card.rarity || "standard").toLowerCase().replace(/[^a-z0-9]+/g, "-"); return `<button class="pvx-reveal-card rarity-${rarity} ${index < revealedPackCards ? "revealed" : ""}" style="--delay:${index * .13}s;--tilt:${(index - (pulls.length - 1) / 2) * 3}deg" data-action="reveal-pack-card" data-index="${index}" aria-label="${index < revealedPackCards ? `${escapeHtml(card.name)} revealed` : `Reveal card ${index + 1}`}" ${index > revealedPackCards ? "disabled" : ""}><div class="pvx-reveal-inner"><div class="pvx-reveal-back"><i class="pvx-reveal-sigil">✦</i><span>PV</span><b>?</b><small>Tap to break seal</small></div><div class="pvx-reveal-front"><div class="pvx-card-hologram" aria-hidden="true"></div>${renderCardImage(card)}<div><small>${escapeHtml(card.rarity)}</small><h2>${escapeHtml(card.name)}</h2><p>${escapeHtml(card.element)}</p></div></div></div></button>`; }).join("")}</div>${allRevealed ? `<div class="pvx-vault-arrival" aria-live="polite"><span>✦</span><div><b>${pulls.length} new ${pulls.length === 1 ? "card" : "cards"} secured</b><small>Transferred into your Collection Vault</small></div><i>◆</i></div>` : ""}<div class="pvx-reveal-actions">${!allRevealed ? `<button data-action="reveal-all">Reveal all</button>` : `<button class="pvx-primary" data-action="finish-reveal">Open Collection Vault →</button>`}<button data-action="close-pack">Back to shop</button></div></section>`;
 }
 
@@ -1404,7 +1420,7 @@ async function beginRemoteQueue(mode) {
 }
 
 async function finishPackAnimation() {
-  if (!packOverlay || packOverlay.phase !== "opening" || packOpeningRequestInFlight) return;
+  if (!packOverlay || !["opening", "tearing"].includes(packOverlay.phase) || packOpeningRequestInFlight) return;
   packOpeningRequestInFlight = true;
   try {
     if (backend.configured && backend.session) {
@@ -1422,6 +1438,7 @@ async function finishPackAnimation() {
     if (gameState.totalPacksOpened === 1) trackEvent("first_pack_opened", { source: backend.session ? "cloud" : "local" });
     packOverlay = { ...packOverlay, phase: "reveal", cards: [...gameState.lastOpenedPack] };
     revealedPackCards = 0;
+    packRevealIndex = 0;
     renderApp();
   } catch (error) {
     if (backend.configured && backend.session) {
@@ -1589,8 +1606,6 @@ async function handleClick(event) {
     packOverlay = { phase: "opening", packId: target.dataset.packId, requestId: crypto.randomUUID() };
     playHaptic([8, 22, 10]);
     renderApp();
-    clearTimeout(packTimer);
-    packTimer = setTimeout(finishPackAnimation, 2800);
     return;
   }
   if (action === "claim-daily") {
@@ -1626,9 +1641,8 @@ async function handleClick(event) {
     renderApp();
     return notice(result.message || result.error || "Daily drop updated.");
   }
-  if (action === "skip-pack") { playHaptic([10, 35, 18]); clearTimeout(packTimer); return finishPackAnimation(); }
-  if (action === "reveal-pack-card") { const index = Number(target.dataset.index); if (index === revealedPackCards) { revealedPackCards += 1; playHaptic(revealedPackCards === packOverlay?.cards?.length ? [15, 45, 28] : 12); } return renderApp(); }
-  if (action === "reveal-all") { revealedPackCards = packOverlay?.cards?.length || 0; playHaptic([12, 35, 12]); return renderApp(); }
+  if (action === "tear-pack") { if (packOverlay?.phase !== "opening") return; packOverlay = { ...packOverlay, phase: "tearing" }; playHaptic([9, 18, 26]); renderApp(); clearTimeout(packTimer); packTimer = setTimeout(finishPackAnimation, 820); return; }
+  if (action === "reveal-pack-card") { const index = Number(target.dataset.index); if (index !== packRevealIndex) return; if (revealedPackCards <= index) { revealedPackCards = index + 1; playHaptic(revealedPackCards === packOverlay?.cards?.length ? [15, 45, 28] : 12); } else if (index < (packOverlay?.cards?.length || 0) - 1) { packRevealIndex += 1; playHaptic([8, 20]); } return renderApp(); }
   if (action === "finish-reveal") { playHaptic([18, 35, 28]); packOverlay = null; return go("collection"); }
   if (action === "close-pack") { packOverlay = null; return renderApp(); }
   if (action === "solo-stat") { chooseBattleStat(target.dataset.stat); if (gameState.winner === "player") playHaptic([18, 40, 28]); else if (gameState.winner === "computer") playHaptic(35); else playHaptic([10, 28, 10]); if (gameState.winner === "player" && gameState.playerWins === 1) trackEvent("first_battle_won"); return renderApp(); }
