@@ -2131,3 +2131,15 @@ body.pvx-modal-open { overflow: hidden; }
 .pvx-opening-foil-face>i{position:absolute;z-index:3;top:16px;right:16px;display:grid;place-items:center;width:40px;aspect-ratio:1;border:1px solid rgba(235,255,252,.6);border-radius:50%;color:#0a1730;font-size:1.1rem;font-style:normal;background:linear-gradient(145deg,#e4fffb,#65e9df 55%,#a67cff);box-shadow:0 0 24px rgba(117,247,236,.55)}
 @keyframes pvxWrapperFoil{0%,24%{background-position:center,left center}62%,100%{background-position:center,right center}}
 @media (max-width:700px),(pointer:coarse){.pvx-pack-card{min-height:474px;grid-template-rows:240px auto auto 1fr auto auto}.pvx-shop-pack-display{min-height:240px}.pvx-shop-foil{width:150px;height:210px}.pvx-shop-foil-wash,.pvx-opening-foil-wash{animation:none;background-position:center,58% center}.pvx-opening-foil{width:205px;height:292px}.pvx-pack-card:hover .pvx-shop-foil{transform:translateY(0)}.pvx-pack-card:active .pvx-shop-foil{transform:scale(.975)}}
+
+/* Keep the product silhouette legible: card art is a small foil window, never a full card pasted onto the pack. */
+.pvx-shop-foil-front{background:linear-gradient(145deg,#122650,#492469 58%,#101735)}
+.pvx-shop-foil-front>img{inset:15px 15px auto;width:calc(100% - 30px);height:91px;border:1px solid rgba(203,255,251,.38);border-radius:7px;object-position:center 18%;opacity:.82;box-shadow:0 8px 18px rgba(0,0,0,.38)}
+.pvx-shop-foil-wash{background:linear-gradient(180deg,rgba(6,12,32,.1),rgba(8,12,33,.25) 35%,rgba(7,9,28,.94) 78%),linear-gradient(108deg,transparent 35%,rgba(236,255,252,.34) 49%,transparent 59%);mix-blend-mode:normal;opacity:.86}
+.pvx-shop-foil-copy{right:8px;bottom:18px;left:8px}.pvx-shop-foil-copy b{font-size:1.02rem}.pvx-shop-foil-mark{top:20px;right:20px;width:25px;font-size:.68rem}
+.pvx-opening-foil-face{background:linear-gradient(145deg,#132957,#542475 55%,#101735)}
+.pvx-opening-foil-face>img{inset:20px 20px auto;width:calc(100% - 40px);height:132px;border:1px solid rgba(204,255,251,.43);border-radius:9px;object-position:center 18%;opacity:.86;box-shadow:0 12px 25px rgba(0,0,0,.4)}
+.pvx-opening-foil-wash{background:linear-gradient(180deg,rgba(6,12,32,.05),rgba(7,10,28,.22) 38%,rgba(5,7,23,.96) 78%),linear-gradient(108deg,transparent 35%,rgba(242,255,253,.38) 49%,transparent 58%);mix-blend-mode:normal;opacity:.88}
+.pvx-opening-foil-copy{right:12px;bottom:31px;left:12px}.pvx-opening-foil-copy b{font-size:1.34rem}.pvx-opening-foil-face>i{top:28px;right:27px;width:34px;font-size:.9rem}
+.pvx-sequential-reveal .pvx-reveal-actions{display:flex;justify-content:center;width:min(340px,100%)}.pvx-sequential-reveal .pvx-reveal-actions .pvx-primary{display:block;flex:1;min-height:46px}.pvx-sequential-reveal .pvx-reveal-actions button:not(.pvx-primary){display:block}
+@media (max-width:700px),(pointer:coarse){.pvx-shop-foil-front>img{height:86px}.pvx-opening-foil-face>img{height:121px}.pvx-sequential-reveal .pvx-reveal-actions{display:grid;width:min(280px,100%)}.pvx-sequential-reveal .pvx-reveal-actions button{width:100%}}
