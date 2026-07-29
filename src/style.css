@@ -2015,3 +2015,26 @@ body.pvx-modal-open { overflow: hidden; }
 @keyframes pvxHandHologram{0%,42%{opacity:0;transform:translateX(-135%)}48%{opacity:1}61%,100%{opacity:0;transform:translateX(135%)}}
 @media (max-width:700px),(pointer:coarse){.pvx-home-deck-orbit .pvx-home-deck-card.flipped{transform:translate(-50%,-50%) translateZ(24px) scale(1.045)}.pvx-home-deck-orbit .pvx-deck-orbit-slot::before{width:48px;opacity:.24;animation:none}.pvx-home-deck-orbit .pvx-deck-orbit-slot::after{display:none}.pvx-home-deck-orbit .pvx-home-deck-card-front::after{animation:none;opacity:.28;transform:translateX(-38%)}}
 @media (prefers-reduced-motion:reduce){.pvx-home-deck-orbit .pvx-deck-orbit-slot::before,.pvx-home-deck-orbit .pvx-deck-orbit-slot::after,.pvx-home-deck-orbit .pvx-home-deck-card-front::after{animation:none}}
+
+/* Mobile game interaction system: direct, tactile, and intentionally quiet. */
+.pvx-shell button,.pvx-shell [role="button"]{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.pvx-primary,.pvx-secondary,.pvx-core-action-cta,.pvx-daily-task-action,.pvx-pack-card>button,.pvx-deck-summary>button,.pvx-home-deck-battle{transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}
+.pvx-primary:focus-visible,.pvx-secondary:focus-visible,.pvx-core-action-cta:focus-visible,.pvx-daily-task-action:focus-visible,.pvx-pack-card>button:focus-visible,.pvx-deck-summary>button:focus-visible,.pvx-home-deck-battle:focus-visible{outline:2px solid #e6fffb;outline-offset:3px}
+@media (pointer:coarse){
+  .pvx-primary,.pvx-secondary,.pvx-core-action-cta,.pvx-daily-task-action,.pvx-pack-card>button,.pvx-deck-summary>button,.pvx-home-deck-battle,.pvx-daily-next>button{min-height:48px}
+  .pvx-primary:active,.pvx-secondary:active,.pvx-core-action-cta:active,.pvx-daily-task-action:active,.pvx-pack-card>button:active,.pvx-deck-summary>button:active,.pvx-home-deck-battle:active,.pvx-daily-next>button:active{transform:scale(.975);filter:brightness(1.08)}
+  .pvx-vault-card-main:active .pvx-vault-image,.pvx-latest-card:active img,.pvx-daily-reward-card:active img{transform:scale(.975);transition:transform .18s ease}
+  .pvx-filterbar,.pvx-vault-sort{padding-inline:8px;scroll-snap-type:x proximity;scroll-padding-inline:8px;scrollbar-width:none;overscroll-behavior-x:contain}
+  .pvx-filterbar::-webkit-scrollbar,.pvx-vault-sort::-webkit-scrollbar{display:none}
+  .pvx-filterbar button,.pvx-vault-sort button{scroll-snap-align:start;min-height:42px}
+  .pvx-vault-card footer button{min-height:42px}
+  .pvx-modal-actions{display:grid;grid-template-columns:1fr 1fr}
+  .pvx-modal-actions .pvx-primary{grid-column:1/-1;width:100%}
+  .pvx-notice{bottom:calc(82px + env(safe-area-inset-bottom))}
+  .pvx-home-panel,.pvx-core-action,.pvx-home-mission-summary,.pvx-daily-task,.pvx-vault-summary article{box-shadow:0 13px 28px rgba(0,0,0,.14)}
+}
+@media (max-width:420px){
+  .pvx-modal-actions{grid-template-columns:1fr}
+  .pvx-modal-actions .pvx-primary{grid-column:auto}
+  .pvx-vault-card footer{grid-template-columns:42px 1fr 1fr}
+}
