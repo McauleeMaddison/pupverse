@@ -782,9 +782,12 @@ function renderJourneyTrack(track) {
 
 function getDailyTaskAction(task) {
   const soloTask = task.group === "soloWins" || task.group === "soloBattles";
+  const vaultTask = ["vaultGrowth", "discoveries"].includes(task.group);
   return soloTask
     ? { action: "go-battle", label: "Play solo" }
-    : { action: "go-shop", label: "Open packs" };
+    : vaultTask
+      ? { action: "go-vault", label: "View vault" }
+      : { action: "go-shop", label: "Open packs" };
 }
 
 function renderDailyTask(task) {
