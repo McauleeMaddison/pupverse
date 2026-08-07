@@ -30,6 +30,8 @@ body {
     radial-gradient(circle at 86% 14%, rgba(103, 244, 231, 0.12), transparent 30%),
     radial-gradient(circle at 52% 92%, rgba(92, 188, 255, 0.1), transparent 34%),
     linear-gradient(145deg, #02040d, #060a1a 58%, #030612);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 body::before,
@@ -1478,12 +1480,13 @@ body.pvx-modal-open { overflow: hidden; }
 }
 
 @media (max-width: 820px) {
-  .app-shell:has(.pvx-shell) { width: min(100% - 12px, 1440px); padding: 6px 0 82px; }
+  html { scroll-padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
+  .app-shell:has(.pvx-shell) { width: min(100% - 12px, 1440px); padding: calc(6px + env(safe-area-inset-top)) 0 calc(102px + env(safe-area-inset-bottom)); }
   .pvx-shell { min-height: calc(100vh - 88px); border-radius: 21px; overflow: visible; }
   .pvx-topbar { position: sticky; top: 0; grid-template-columns: 1fr auto; min-height: 68px; padding: 10px 15px; border-radius: 21px 21px 0 0; }
   .pvx-nav { display: none; }
   .pvx-account { display:none; }.pvx-mobile-account{grid-column:2;display:flex;align-items:center;gap:7px;min-height:44px;padding:4px 7px 4px 4px;border-radius:13px;color:#eafffb;font-size:.54rem;font-weight:950;letter-spacing:.04em;text-transform:uppercase;background:linear-gradient(145deg,rgba(76,226,214,.12),rgba(99,95,225,.1));border:1px solid rgba(100,235,224,.18)}.pvx-mobile-account .pvx-avatar{width:35px}.pvx-mobile-account:focus-visible{outline:3px solid var(--pvx-cyan);outline-offset:2px}
-  .pvx-mobile-nav { position:fixed;z-index:8000;left:8px;right:8px;bottom:8px;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px;border-radius:17px;background:rgba(5,9,22,.92);border:1px solid rgba(131,160,214,.14);box-shadow:0 18px 50px rgba(0,0,0,.5),0 0 35px rgba(75,219,209,.08);backdrop-filter:blur(22px) }
+  .pvx-mobile-nav { position:fixed;z-index:8000;left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:6px;border-radius:17px;background:rgba(5,9,22,.92);border:1px solid rgba(131,160,214,.14);box-shadow:0 18px 50px rgba(0,0,0,.5),0 0 35px rgba(75,219,209,.08);backdrop-filter:blur(22px) }
   .pvx-beta-footer { display:grid; gap:10px; padding:14px 16px; }.pvx-beta-footer>div,.pvx-beta-footer nav { justify-content:center; }.pvx-beta-footer p { text-align:center; }.pvx-beta-footer nav { gap:12px; }
   .pvx-mobile-nav button { min-height:51px;display:grid;justify-items:center;align-content:center;gap:1px;border-radius:11px;color:#65728c;font-size:.45rem;background:transparent}.pvx-mobile-nav button span{font-size:.9rem}.pvx-mobile-nav button.active{color:#eafffb;background:linear-gradient(145deg,rgba(76,226,214,.15),rgba(99,95,225,.11));box-shadow:inset 0 0 0 1px rgba(100,235,224,.12)}.pvx-mobile-nav button.active span{color:var(--pvx-cyan);text-shadow:0 0 10px var(--pvx-cyan)}
   .pvx-home { min-height:auto; padding:34px 18px 26px; text-align:center; }
@@ -1525,6 +1528,13 @@ body.pvx-modal-open { overflow: hidden; }
   .pvx-online-hub{width:min(100% - 28px,1240px);padding-top:35px}.pvx-online-hub>header{grid-template-columns:1fr}.pvx-current-rank{max-width:430px}.pvx-mode-grid{grid-template-columns:1fr}.pvx-mode{display:grid;grid-template-columns:220px 1fr}.pvx-mode-art{height:100%;min-height:260px;border-right:1px solid rgba(255,255,255,.05);border-bottom:0}.pvx-mode-copy{min-height:260px}.pvx-leaderboard{grid-template-columns:1fr}
   .pvx-auth{grid-template-columns:1fr;gap:30px;text-align:center}.pvx-auth-art{display:grid;justify-items:center}.pvx-auth-art>.pvx-rank-gem{margin-top:20px}.pvx-auth-art>div:last-child{justify-content:center}.pvx-auth-card{width:min(420px,100%);justify-self:center;text-align:left}
   .pvx-friends>section{grid-template-columns:1fr;gap:10px}.pvx-friends>section>i{padding:5px}.pvx-live-battle>main{grid-template-columns:minmax(145px,210px) 95px minmax(145px,210px);gap:8px;padding-inline:12px}.pvx-live-referee>div{width:66px}.pvx-live-referee>p{font-size:.5rem}
+}
+
+@media (hover: none) and (pointer: coarse) {
+  button:hover:not(:disabled) { transform: none; filter: none; }
+  button:active:not(:disabled) { transform: scale(.975); filter: brightness(1.08); }
+  .pvx-mobile-nav button { min-height:52px; }
+  .pvx-main { padding-bottom: 4px; }
 }
 
 @media (max-width: 540px) {

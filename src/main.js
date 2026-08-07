@@ -569,16 +569,16 @@ function renderShell(content, active = gameState.mode) {
           <span>⚔</span><b>Play</b>
         </button>
 
+        <button class="${active === "shop" ? "active" : ""}" data-action="go-shop">
+          <span>✦</span><b>Packs</b>
+        </button>
+
         <button class="${active === "daily" ? "active" : ""}" data-action="go-daily">
           <span>✦</span><b>Daily Ops</b>
         </button>
 
         <button class="${active === "collection" ? "active" : ""}" data-action="go-vault">
           <span>◇</span><b>Vault</b>
-        </button>
-
-        <button class="${active === "online" ? "active" : ""}" data-action="go-online">
-          <span>◉</span><b>${hasSession ? "Online" : "Account"}</b>
         </button>
       </nav>
     </section>
