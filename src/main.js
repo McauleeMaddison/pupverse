@@ -1,4 +1,6 @@
 import "./style.css";
+import "./ui/visualUpgrade.css";
+import { WORLDS, rarityEffect, readVisualSettings } from "./ui/worlds.js";
 import { CARD_STATS, SHOWCASE_CARD_IDS } from "./app/constants.js";
 import { cards } from "./data/cards.js";
 import { packs } from "./data/packs.js";
@@ -38,7 +40,7 @@ import {
 } from "./game/state.js";
 import { startAnimatedBackground } from "./ui/animatedBackground.js";
 import { renderCardImage, setupImageFallbacks } from "./ui/cardImages.js";
-import { getAbilityBoost, getEffectiveStatValue, isPrestigeRarity } from "./game/battleRules.js";
+import { getAbilityBoost, getAbilityBoosts, getEffectiveStatValue, isPrestigeRarity } from "./game/battleRules.js";
 import { escapeHtml, titleCase } from "./utils/format.js";
 import { trackEvent } from "./utils/analytics.js";
 import {
@@ -113,6 +115,32 @@ const PLAYSTYLE_COPY = {
 const HOME_PANEL_STORAGE_NAMESPACE = "pupverse-home-panels";
 const HOME_PANEL_KEYS = ["showcase", "daily", "command"];
 
+const visualSettings = readVisualSettings();
+let worldModule = null;
+let worldLoad = null;
+let visualRevision = 0;
+function renderWorldHost(extra = "") {
+  return `<div class="pvx-world-scene world-${visualSettings.world}" data-world-scene ${extra} aria-hidden="true"></div>`;
+}
+function renderWorldControls() {
+  return `<section class="pvx-world-controls" aria-label="Arena environment"><div><small>CHOOSE YOUR WORLD</small><strong>${WORLDS[visualSettings.world].subtitle}</strong></div><div class="pvx-world-options">${Object.entries(WORLDS).map(([id, w]) => `<button data-action="select-world" data-world="${id}" aria-pressed="${id === visualSettings.world}" style="--world-accent:${w.color}"><i>${w.icon}</i><span>${w.name}</span></button>`).join("")}</div><button class="pvx-quality" data-action="cycle-quality" aria-label="Graphics quality: ${visualSettings.quality}. Change quality.">◈ ${visualSettings.quality === 'auto' ? 'Adaptive' : visualSettings.quality === 'eco' ? 'Battery saver' : 'High detail'}</button></section>`;
+}
+function renderAbilityEffect(card, selected, active = false) {
+  if (!card) return "";
+  const boosts = Object.entries(getAbilityBoosts(card)).filter(([, amount]) => Number(amount) > 0);
+  if (!boosts.length) return "";
+  const triggered = active && getAbilityBoost(card, selected) > 0;
+  return `<aside class="pvx-ability-signal ${triggered ? 'is-active' : ''} ability-${selected || 'ready'}"><span class="pvx-ability-symbol" aria-hidden="true">✦</span><div><small>${triggered ? 'ABILITY ACTIVATED' : 'AUTO-TRIGGER ABILITY'}</small><strong>${escapeHtml(card.ability?.name || card.ability_name || 'Cosmic Instinct')}</strong><p>${boosts.map(([key, value]) => `<span class="${selected === key ? 'chosen' : ''}">+${Number(value)} ${titleCase(key)}</span>`).join('')}</p><em>${triggered ? `${getEffectiveStatValue(card, selected) - getAbilityBoost(card, selected)} base + ${getAbilityBoost(card, selected)} boost = ${getEffectiveStatValue(card, selected)} ${titleCase(selected)}` : 'Activates when you choose a matching stat'}</em></div>${triggered ? '<i class="pvx-ability-wave" aria-hidden="true"></i>' : ''}</aside>`;
+}
+function syncWorld() {
+  const revision = ++visualRevision;
+  const host = app.querySelector('.pvx-pack-overlay [data-world-scene]') || app.querySelector('[data-world-scene]');
+  if (!host) { worldModule?.mountWorld(null); return; }
+  const options = { ...visualSettings, color: host.dataset.color, burst: host.dataset.burst === 'true' };
+  if (worldModule) { worldModule.mountWorld(host, options); return; }
+  worldLoad ||= import('./ui/arenaWorld.js');
+  worldLoad.then(module => { worldModule = module; if (revision === visualRevision && host.isConnected) module.mountWorld(host, options); }).catch(() => { worldLoad = null; host.dataset.fallback = 'true'; });
+}
 let selectedVaultCardId = null;
 let vaultCardFlipped = false;
 let homeDeckFlippedCardId = null;
@@ -596,7 +624,7 @@ function renderCombatStatValue(card, statKey) {
 }
 
 function renderRoundValue(value, boost = 0) {
-  return `<strong>${value}${boost ? `<small>+${boost}</small>` : ""}</strong>`;
+  return `<strong>${value}${boost ? `<small>${value - boost} + ${boost} ability</small>` : ""}</strong>`;
 }
 
 function getPrestigeWinClass(card, won) {
@@ -1055,6 +1083,9 @@ function renderSequentialPackReveal(pack, pulls, walkout) {
   const card = pulls[index];
   const revealed = revealedPackCards > index;
   const rarity = String(card?.rarity || "standard").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  if (!card) return "";
+  const fx = rarityEffect(card.rarity);
+  walkout = revealed && fx.intensity >= 4;
   const nextCard = index < pulls.length - 1;
   const instruction = !revealed
     ? "Tap the sealed card to reveal it."
@@ -1066,7 +1097,7 @@ function renderSequentialPackReveal(pack, pulls, walkout) {
     : revealed
       ? `<button class="pvx-primary" data-action="next-pack-card">Reveal card ${index + 2} →</button>`
       : `<button class="pvx-primary" data-action="reveal-pack-card" data-index="${index}">Turn card over →</button>`;
-  return `<section class="pvx-pack-overlay reveal pvx-sequential-reveal ${walkout ? "pvx-pack-walkout" : ""} ${pack.themeClass}" aria-live="polite"><div class="pvx-opening-stars"></div><div class="pvx-reveal-radiance" aria-hidden="true"></div>${walkout ? `<div class="pvx-walkout-lights" aria-hidden="true"><i></i><i></i></div>` : ""}<p class="pvx-eyebrow"><i></i> ${walkout ? "Prestige pull detected" : "Pack unsealed"}</p><h1>${allRevealed ? "VAULT <span>SECURED</span>" : "CARD <span>${index + 1} / ${pulls.length}</span>"}</h1><p class="pvx-reveal-status"><b>${revealed ? (allRevealed ? "Complete set revealed" : "Card secured") : `Sealed pull ${index + 1} of ${pulls.length}`}</b><span>${instruction}</span></p><div class="pvx-reveal-grid pvx-reveal-single ${allRevealed ? "complete" : ""}"><button class="pvx-reveal-card rarity-${rarity} ${revealed ? "revealed" : ""}" style="--delay:0s;--tilt:0deg" data-action="reveal-pack-card" data-index="${index}" aria-label="${revealed ? (nextCard ? `Show card ${index + 2}` : `${escapeHtml(card.name)} revealed`) : `Reveal card ${index + 1}`}"><div class="pvx-reveal-inner"><div class="pvx-reveal-back"><i class="pvx-reveal-sigil">✦</i><span>PV</span><b>?</b><small>Tap to break seal</small></div><div class="pvx-reveal-front"><div class="pvx-card-hologram" aria-hidden="true"></div>${renderCardImage(card)}<div><small>${escapeHtml(card.rarity)}</small><h2>${escapeHtml(card.name)}</h2><p>${escapeHtml(card.element)}</p></div></div></div></button></div>${allRevealed ? `<div class="pvx-vault-arrival" aria-live="polite"><span>✦</span><div><b>${pulls.length} new cards secured</b><small>Transferred into your Collection Vault</small></div><i>◆</i></div>` : ""}<div class="pvx-reveal-actions">${progressionAction}<button data-action="close-pack">Back to shop</button></div></section>`;
+  return `<section class="pvx-pack-overlay reveal pvx-sequential-reveal ${revealed ? `fx-unlocked fx-tier-${fx.intensity}` : "fx-sealed"} ${walkout ? "pvx-pack-walkout" : ""} ${pack.themeClass}" style="--reveal-color:${revealed ? fx.color : "#a9c7ff"}" aria-live="polite">${renderWorldHost(`data-color="${revealed ? fx.color : "#a9c7ff"}" data-burst="${revealed}"`)}${revealed ? `<div class="pvx-reveal-crown"><span>${escapeHtml(card.rarity)}</span><b>${fx.label}</b></div><div class="pvx-reveal-sparks" aria-hidden="true">${Array.from({length: 16}, (_, i) => `<i style="--spark:${i}"></i>`).join("")}</div>` : ""}<div class="pvx-opening-stars"></div><div class="pvx-reveal-radiance" aria-hidden="true"></div>${walkout ? `<div class="pvx-walkout-lights" aria-hidden="true"><i></i><i></i></div>` : ""}<p class="pvx-eyebrow"><i></i> ${walkout ? "Prestige pull detected" : "Pack unsealed"}</p><h1>${allRevealed ? "VAULT <span>SECURED</span>" : "CARD <span>${index + 1} / ${pulls.length}</span>"}</h1><p class="pvx-reveal-status"><b>${revealed ? (allRevealed ? "Complete set revealed" : "Card secured") : `Sealed pull ${index + 1} of ${pulls.length}`}</b><span>${instruction}</span></p><div class="pvx-reveal-grid pvx-reveal-single ${allRevealed ? "complete" : ""}"><button class="pvx-reveal-card rarity-${rarity} ${revealed ? "revealed" : ""}" style="--delay:0s;--tilt:0deg" data-action="reveal-pack-card" data-index="${index}" aria-label="${revealed ? (nextCard ? `Show card ${index + 2}` : `${escapeHtml(card.name)} revealed`) : `Reveal card ${index + 1}`}"><div class="pvx-reveal-inner"><div class="pvx-reveal-back"><i class="pvx-reveal-sigil">✦</i><span>PV</span><b>?</b><small>Tap to break seal</small></div><div class="pvx-reveal-front"><div class="pvx-card-hologram" aria-hidden="true"></div>${renderCardImage(card)}<div><small>${escapeHtml(card.rarity)}</small><h2>${escapeHtml(card.name)}</h2><p>${escapeHtml(card.element)}</p></div></div></div></button></div>${allRevealed ? `<div class="pvx-vault-arrival" aria-live="polite"><span>✦</span><div><b>${pulls.length} new cards secured</b><small>Transferred into your Collection Vault</small></div><i>◆</i></div>` : ""}<div class="pvx-reveal-actions">${progressionAction}<button data-action="close-pack">Back to shop</button></div></section>`;
 }
 
 function renderVaultCard(card, index) {
@@ -1144,7 +1175,7 @@ function renderBattleCard(card, owner, hidden = false, player = false) {
   if (hidden) return `<article class="pvx-battle-card mystery"><span>${owner}</span><div class="pvx-mystery-card"><div class="pvx-mystery-rings"></div><b>PV</b><strong>?</strong><small>Opponent card encrypted</small></div></article>`;
   const won = gameState.computerRevealed && ((player && gameState.winner === "player") || (!player && gameState.winner === "computer"));
   const rarityClass = String(card.rarity || "standard").toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  return `<article class="pvx-battle-card ${player ? "player" : "rival"} rarity-${rarityClass} ${gameState.winner ? (won ? "victorious" : "defeated") : ""} ${getPrestigeWinClass(card, won)}"><span>${owner}</span><div class="pvx-battle-image"><div class="pvx-rarity-aura" aria-hidden="true"></div>${renderCardImage(card)}<div class="pvx-card-sheen"></div>${won ? `<div class="pvx-win-burst"><i></i><i></i><i></i><b>${escapeHtml(card.rarity)} Victory</b></div>` : ""}${gameState.selectedStat ? `<b>${titleCase(gameState.selectedStat)} locked</b>` : ""}</div><h3>${escapeHtml(card.name)}</h3><p>${escapeHtml(card.rarity)} · ${escapeHtml(card.element)}</p></article>`;
+  return `<article class="pvx-battle-card ${player ? "player" : "rival"} rarity-${rarityClass} ${gameState.winner ? (won ? "victorious" : "defeated") : ""} ${getPrestigeWinClass(card, won)}"><span>${owner}</span><div class="pvx-battle-image"><div class="pvx-rarity-aura" aria-hidden="true"></div>${renderCardImage(card)}<div class="pvx-card-sheen"></div>${won ? `<div class="pvx-win-burst"><i></i><i></i><i></i><b>${escapeHtml(card.rarity)} Victory</b></div>` : ""}${gameState.selectedStat ? `<b>${titleCase(gameState.selectedStat)} locked</b>` : ""}</div><h3>${escapeHtml(card.name)}</h3><p>${escapeHtml(card.rarity)} · ${escapeHtml(card.element)}</p>${renderAbilityEffect(card, gameState.selectedStat || pendingBattleStat, Boolean(gameState.selectedStat || pendingBattleStat))}</article>`;
 }
 
 function renderBattleHand(activeCard) {
@@ -1200,8 +1231,9 @@ function renderSoloBattle() {
           ? `<section class="pvx-battle-tutorial"><div><small>${escapeHtml(tutorialBanner.eyebrow)}</small><h2>${escapeHtml(tutorialBanner.title)}</h2><p>${escapeHtml(tutorialBanner.copy)}</p></div><button data-action="${tutorialBanner.action}"${tutorialActionAttr}>${escapeHtml(tutorialBanner.button)}</button></section>`
           : ""
       }
-      <main class="pvx-arena-board impact-${selected || "idle"} ${resolving ? "is-resolving" : ""} ${gameState.winner ? `result-${gameState.winner}` : ""}"><div class="pvx-arena-sky"></div><div class="pvx-arena-nebula nebula-one"></div><div class="pvx-arena-nebula nebula-two"></div><div class="pvx-arena-comet"></div><div class="pvx-arena-floor"></div><div class="pvx-arena-beam beam-left"></div><div class="pvx-arena-beam beam-right"></div><div class="pvx-arena-impact" aria-hidden="true"><i></i><i></i><i></i></div><div class="pvx-head-to-head player-side">${renderBattleCard(gameState.playerCard, "Your challenger", false, true)}${renderBattleHand(gameState.playerCard)}</div><section class="pvx-referee" aria-live="polite"><span><i></i> Head-to-head arena</span><div class="pvx-vs-core"><b>VS</b><i></i></div>${gameState.winner ? `<b class="pvx-round-verdict ${gameState.winner}">${outcomeLabel}</b>` : ""}<p class="${gameState.winner || ""}">${escapeHtml(resolving ? `${titleCase(selected)} locked. Reading rival response…` : gameState.resultMessage)}</p>${gameState.computerRevealed && selected ? `<div class="pvx-round-values">${renderRoundValue(result?.playerValue ?? getEffectiveStatValue(gameState.playerCard, selected), result?.playerBoost)}<span>${titleCase(selected)}</span>${renderRoundValue(result?.opponentValue ?? getEffectiveStatValue(gameState.computerCard, selected), result?.opponentBoost)}</div>` : `<small>${resolving ? "Rival card is resolving" : "Choose the stat that gives your pup the edge"}</small>`}</section><div class="pvx-head-to-head rival-side">${renderBattleCard(gameState.computerCard, "CPU challenger", !gameState.computerRevealed)}</div></main>
-      <section class="pvx-stat-dock"><div><small>${resolving ? "Stat locked" : gameState.computerRevealed ? "Official result" : "Your move"}</small><strong>${resolving ? "Rival is answering" : gameState.computerRevealed ? outcomeLabel : "Select one combat stat"}</strong>${!gameState.computerRevealed && !resolving && !hasTutorialWin() ? `<p class="pvx-first-battle-coach"><i>✦</i><span><b>Strong opening move</b> ${escapeHtml(recommendedStat.label)} is your highest stat at ${getEffectiveStatValue(gameState.playerCard, recommendedStat.key)}.</span></p>` : ""}</div><div class="pvx-stat-grid">${stats.map((stat) => `<button class="${getAbilityBoost(gameState.playerCard, stat.key) ? "has-boost" : ""} ${!hasTutorialWin() && stat.key === recommendedStat.key ? "coach" : ""} ${resolving && stat.key === selected ? "locked" : ""}" data-action="solo-stat" data-stat="${stat.key}" ${gameState.computerRevealed || resolving ? "disabled" : ""}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(gameState.playerCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${gameState.computerRevealed ? `<button class="pvx-next" data-action="next-solo">Next round →</button>` : resolving ? `<span class="pvx-timer">◷ Resolving</span>` : `<span class="pvx-timer">◷ 20s</span>`}</section>
+      ${renderWorldControls()}
+      <main class="pvx-arena-board impact-${selected || "idle"} ${resolving ? "is-resolving" : ""} ${gameState.winner ? `result-${gameState.winner}` : ""}">${renderWorldHost(`data-burst="${resolving}"`)}<div class="pvx-world-caption"><i></i> ${WORLDS[visualSettings.world].name} <span>SECTOR / 0${Object.keys(WORLDS).indexOf(visualSettings.world) + 1}</span></div><div class="pvx-arena-sky"></div><div class="pvx-arena-nebula nebula-one"></div><div class="pvx-arena-nebula nebula-two"></div><div class="pvx-arena-comet"></div><div class="pvx-arena-floor"></div><div class="pvx-arena-beam beam-left"></div><div class="pvx-arena-beam beam-right"></div><div class="pvx-arena-impact" aria-hidden="true"><i></i><i></i><i></i></div><div class="pvx-head-to-head player-side">${renderBattleCard(gameState.playerCard, "Your challenger", false, true)}${renderBattleHand(gameState.playerCard)}</div><section class="pvx-referee" aria-live="polite"><span><i></i> Head-to-head arena</span><div class="pvx-vs-core"><b>VS</b><i></i></div>${gameState.winner ? `<b class="pvx-round-verdict ${gameState.winner}">${outcomeLabel}</b>` : ""}<p class="${gameState.winner || ""}">${escapeHtml(resolving ? `${titleCase(selected)} locked. Reading rival response…` : gameState.resultMessage)}</p>${gameState.computerRevealed && selected ? `<div class="pvx-round-values">${renderRoundValue(result?.playerValue ?? getEffectiveStatValue(gameState.playerCard, selected), result?.playerBoost)}<span>${titleCase(selected)}</span>${renderRoundValue(result?.opponentValue ?? getEffectiveStatValue(gameState.computerCard, selected), result?.opponentBoost)}</div>` : `<small>${resolving ? "Rival card is resolving" : "Choose the stat that gives your pup the edge"}</small>`}</section><div class="pvx-head-to-head rival-side">${renderBattleCard(gameState.computerCard, "CPU challenger", !gameState.computerRevealed)}</div></main>
+      <section class="pvx-stat-dock"><div><small>${resolving ? "Stat locked" : gameState.computerRevealed ? "Official result" : "Your move"}</small><strong>${resolving ? "Rival is answering" : gameState.computerRevealed ? outcomeLabel : "Select one combat stat"}</strong>${!gameState.computerRevealed && !resolving && !hasTutorialWin() ? `<p class="pvx-first-battle-coach"><i>✦</i><span><b>Strong opening move</b> ${escapeHtml(recommendedStat.label)} is your highest stat at ${getEffectiveStatValue(gameState.playerCard, recommendedStat.key)}.</span></p>` : ""}</div><div class="pvx-stat-grid">${stats.map((stat) => `<button class="${getAbilityBoost(gameState.playerCard, stat.key) ? "has-boost" : ""} ${!hasTutorialWin() && stat.key === recommendedStat.key ? "coach" : ""} ${resolving && stat.key === selected ? "locked" : ""}" data-action="solo-stat" data-stat="${stat.key}" ${gameState.computerRevealed || resolving ? "disabled" : ""}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(gameState.playerCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${gameState.computerRevealed ? `<button class="pvx-next" data-action="next-solo">Next round →</button>` : resolving ? `<span class="pvx-timer">◷ Resolving</span>` : `<span class="pvx-timer">◷ Take your time</span>`}</section>
     </section>`, "battle");
 }
 
@@ -1282,7 +1314,7 @@ function renderRemoteBattle() {
 }
 
 function renderOnlineBattleLayout(data) {
-  const body = `<section class="pvx-live-battle"><header><div class="pvx-live-player"><span class="pvx-avatar">${escapeHtml(backend.profile?.avatar || "MP")}</span><div><b>${escapeHtml(data.myName)}</b><small>${escapeHtml(data.myRank)}</small></div></div><div class="pvx-live-score"><small>Best of 3 · Round ${data.round}</small><div><b>${data.myScore}</b><span>—</span><b>${data.rivalScore}</b></div><em>${escapeHtml(data.mode)}</em></div><div class="pvx-live-player rival"><div><b>${escapeHtml(data.rivalName)}</b><small>${escapeHtml(data.rivalRank)}</small></div><span class="pvx-avatar">RP</span></div></header><main><div class="pvx-arena-floor"></div>${renderOnlineBattleCard(data.myCard, "Your pup", false, data.remote, data.roundWinner === "player")}<section class="pvx-live-referee"><span><i></i>${data.remote ? "Protected referee" : "Match referee"}</span><div><small>Round</small><b>${data.round}</b></div><p>${escapeHtml(data.message)}</p>${data.selectedStat ? `<strong>${titleCase(data.selectedStat)} official</strong>` : ""}</section>${renderOnlineBattleCard(data.rivalCard, data.rivalName, data.hideRival, data.remote, data.roundWinner === "opponent")}</main><section class="pvx-live-dock"><div><small>${data.canAct ? "Your move" : "Match state"}</small><strong>${data.canAct ? "Choose one combat stat" : "Waiting securely"}</strong></div><div>${stats.map((stat) => `<button class="${getAbilityBoost(data.myCard, stat.key) ? "has-boost" : ""}" data-action="${data.remote ? "remote-stat" : "online-stat"}" data-stat="${stat.key}" ${data.canAct ? "" : "disabled"}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(data.myCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${!data.remote && data.selectedStat && !data.complete ? `<button class="pvx-next" data-action="next-online">Next round →</button>` : `<span class="pvx-timer">◷ 20s</span>`}</section><footer><span>Safe reactions</span>${["Good luck!", "Great match!", "That was close!"].map((reaction) => `<button data-action="reaction" data-reaction="${reaction}">${reaction}</button>`).join("")}${data.remote ? `<button data-action="remote-report">Report</button><button data-action="remote-block">Block</button><em>${data.presence || 0}/2 connected</em>` : gameState.quickReaction ? `<em>${escapeHtml(gameState.quickReaction)}</em>` : ""}</footer></section>`;
+  const body = `<section class="pvx-live-battle"><header><div class="pvx-live-player"><span class="pvx-avatar">${escapeHtml(backend.profile?.avatar || "MP")}</span><div><b>${escapeHtml(data.myName)}</b><small>${escapeHtml(data.myRank)}</small></div></div><div class="pvx-live-score"><small>Best of 3 · Round ${data.round}</small><div><b>${data.myScore}</b><span>—</span><b>${data.rivalScore}</b></div><em>${escapeHtml(data.mode)}</em></div><div class="pvx-live-player rival"><div><b>${escapeHtml(data.rivalName)}</b><small>${escapeHtml(data.rivalRank)}</small></div><span class="pvx-avatar">RP</span></div></header>${renderWorldControls()}<main class="pvx-online-world">${renderWorldHost()}<div class="pvx-arena-floor"></div>${renderOnlineBattleCard(data.myCard, "Your pup", false, data.remote, data.roundWinner === "player")}<section class="pvx-live-referee"><span><i></i>${data.remote ? "Protected referee" : "Match referee"}</span><div><small>Round</small><b>${data.round}</b></div><p>${escapeHtml(data.message)}</p>${data.selectedStat ? `<strong>${titleCase(data.selectedStat)} official</strong>` : ""}</section>${renderOnlineBattleCard(data.rivalCard, data.rivalName, data.hideRival, data.remote, data.roundWinner === "opponent")}</main>${renderAbilityEffect(data.myCard, data.canAct ? null : data.selectedStat, !data.canAct && Boolean(data.selectedStat))}<section class="pvx-live-dock"><div><small>${data.canAct ? "Your move" : "Match state"}</small><strong>${data.canAct ? "Choose one combat stat" : "Waiting securely"}</strong></div><div>${stats.map((stat) => `<button class="${getAbilityBoost(data.myCard, stat.key) ? "has-boost" : ""}" data-action="${data.remote ? "remote-stat" : "online-stat"}" data-stat="${stat.key}" ${data.canAct ? "" : "disabled"}><span>${stat.icon}</span><small>${stat.short}</small>${renderCombatStatValue(data.myCard, stat.key)}<em>${stat.label}</em></button>`).join("")}</div>${!data.remote && data.selectedStat && !data.complete ? `<button class="pvx-next" data-action="next-online">Next round →</button>` : `<span class="pvx-timer">◷ Take your time</span>`}</section><footer><span>Safe reactions</span>${["Good luck!", "Great match!", "That was close!"].map((reaction) => `<button data-action="reaction" data-reaction="${reaction}">${reaction}</button>`).join("")}${data.remote ? `<button data-action="remote-report">Report</button><button data-action="remote-block">Block</button><em>${data.presence || 0}/2 connected</em>` : gameState.quickReaction ? `<em>${escapeHtml(gameState.quickReaction)}</em>` : ""}</footer></section>`;
   return renderShell(body, "online");
 }
 
@@ -1313,7 +1345,7 @@ function renderPackOverlay() {
   const allRevealed = pulls.length > 0 && revealedPackCards >= pulls.length;
   const walkout = pulls.some((card) => ["mythic", "legendary"].includes(String(card.rarity || "").toLowerCase()));
   return renderSequentialPackReveal(pack, pulls, walkout);
-  return `<section class="pvx-pack-overlay reveal ${walkout ? "pvx-pack-walkout" : ""} ${pack.themeClass}" aria-live="polite"><div class="pvx-opening-stars"></div><div class="pvx-reveal-radiance" aria-hidden="true"></div>${walkout ? `<div class="pvx-walkout-lights" aria-hidden="true"><i></i><i></i></div>` : ""}<p class="pvx-eyebrow"><i></i> ${walkout ? "Prestige pull detected" : "Pack unsealed"}</p><h1>${walkout ? "THE VAULT <span>OPENS</span>" : "YOUR NEW <span>PUPS</span>"}</h1><p class="pvx-reveal-status"><b>${allRevealed ? "Vault updated" : `${revealedPackCards + 1} of ${pulls.length} ready to reveal`}</b><span>${allRevealed ? "Every pull is safely in your collection." : walkout ? "A prestige signature is waiting. Break each seal." : "Tap the next card to break its seal, or reveal the full set."}</span></p><div class="pvx-reveal-grid ${allRevealed ? "complete" : ""}">${pulls.map((card, index) => { const rarity = String(card.rarity || "standard").toLowerCase().replace(/[^a-z0-9]+/g, "-"); return `<button class="pvx-reveal-card rarity-${rarity} ${index < revealedPackCards ? "revealed" : ""}" style="--delay:${index * .13}s;--tilt:${(index - (pulls.length - 1) / 2) * 3}deg" data-action="reveal-pack-card" data-index="${index}" aria-label="${index < revealedPackCards ? `${escapeHtml(card.name)} revealed` : `Reveal card ${index + 1}`}" ${index > revealedPackCards ? "disabled" : ""}><div class="pvx-reveal-inner"><div class="pvx-reveal-back"><i class="pvx-reveal-sigil">✦</i><span>PV</span><b>?</b><small>Tap to break seal</small></div><div class="pvx-reveal-front"><div class="pvx-card-hologram" aria-hidden="true"></div>${renderCardImage(card)}<div><small>${escapeHtml(card.rarity)}</small><h2>${escapeHtml(card.name)}</h2><p>${escapeHtml(card.element)}</p></div></div></div></button>`; }).join("")}</div>${allRevealed ? `<div class="pvx-vault-arrival" aria-live="polite"><span>✦</span><div><b>${pulls.length} new ${pulls.length === 1 ? "card" : "cards"} secured</b><small>Transferred into your Collection Vault</small></div><i>◆</i></div>` : ""}<div class="pvx-reveal-actions">${!allRevealed ? `<button data-action="reveal-all">Reveal all</button>` : `<button class="pvx-primary" data-action="finish-reveal">Open Collection Vault →</button>`}<button data-action="close-pack">Back to shop</button></div></section>`;
+
 }
 
 function renderApp() {
@@ -1344,6 +1376,7 @@ function renderApp() {
   setupImageFallbacks();
   setupHomeDeckOrbit();
   startAnimatedBackground();
+  syncWorld();
 }
 
 function setupHomeDeckOrbit() {
@@ -1478,6 +1511,15 @@ async function handleClick(event) {
   const target = event.target.closest("[data-action]");
   if (!target) return;
   const action = target.dataset.action;
+  if (action === 'select-world' || action === 'cycle-quality') {
+    if (action === 'select-world' && WORLDS[target.dataset.world]) visualSettings.world = target.dataset.world;
+    if (action === 'cycle-quality') { const levels = ['auto', 'eco', 'high']; visualSettings.quality = levels[(levels.indexOf(visualSettings.quality) + 1) % levels.length]; }
+    try { localStorage.setItem('pupverse-visuals', JSON.stringify(visualSettings)); } catch {}
+    return renderApp();
+  }
+  if (battleResolutionPending && ['go-home', 'go-battle', 'go-play', 'go-shop', 'go-vault', 'go-daily', 'reset-solo', 'next-solo'].includes(action)) {
+    clearTimeout(battleResolveTimer); battleResolutionPending = false; pendingBattleStat = null;
+  }
   if (action === "show-info") { activeInfoPanel = target.dataset.panel; return renderApp(); }
   if (action === "close-info") { activeInfoPanel = null; return renderApp(); }
   if (action === "toggle-text-size") { largeTextEnabled = !largeTextEnabled; try { window.localStorage?.setItem(TEXT_SIZE_STORAGE_KEY, String(largeTextEnabled)); } catch {} return renderApp(); }
@@ -1656,7 +1698,7 @@ async function handleClick(event) {
   if (action === "next-pack-card") { if (!packOverlay || revealedPackCards <= packRevealIndex || packRevealIndex >= packOverlay.cards.length - 1) return; packRevealIndex += 1; playHaptic([8, 20]); return renderApp(); }
   if (action === "finish-reveal") { playHaptic([18, 35, 28]); packOverlay = null; return go("collection"); }
   if (action === "close-pack") { packOverlay = null; return renderApp(); }
-  if (action === "solo-stat") { if (battleResolutionPending || gameState.computerRevealed) return; pendingBattleStat = target.dataset.stat; battleResolutionPending = true; trackEvent("solo_stat_selected", { stat: pendingBattleStat }); playHaptic(8); renderApp(); clearTimeout(battleResolveTimer); battleResolveTimer = setTimeout(() => { chooseBattleStat(pendingBattleStat); battleResolutionPending = false; pendingBattleStat = null; if (gameState.winner === "player") playHaptic([18, 40, 28]); else if (gameState.winner === "computer") playHaptic(35); else playHaptic([10, 28, 10]); trackEvent("solo_round_resolved", { outcome: gameState.winner || "draw" }); if (gameState.winner === "player" && gameState.playerWins === 1) trackEvent("first_battle_won"); renderApp(); }, 850); return; }
+  if (action === "solo-stat") { if (battleResolutionPending || gameState.computerRevealed || !stats.some(stat => stat.key === target.dataset.stat)) return; pendingBattleStat = target.dataset.stat; battleResolutionPending = true; trackEvent("solo_stat_selected", { stat: pendingBattleStat }); playHaptic(8); renderApp(); clearTimeout(battleResolveTimer); battleResolveTimer = setTimeout(() => { chooseBattleStat(pendingBattleStat); battleResolutionPending = false; pendingBattleStat = null; if (gameState.winner === "player") playHaptic([18, 40, 28]); else if (gameState.winner === "computer") playHaptic(35); else playHaptic([10, 28, 10]); trackEvent("solo_round_resolved", { outcome: gameState.winner || "draw" }); if (gameState.winner === "player" && gameState.playerWins === 1) trackEvent("first_battle_won"); renderApp(); }, 850); return; }
   if (action === "next-solo") { startComputerBattle(); return renderApp(); }
   if (action === "reset-solo") { resetGameStats(); startComputerBattle(); return renderApp(); }
   if (action === "online-home") { await removeArenaSubscriptions(); openArenaLeague(); return renderApp(); }

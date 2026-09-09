@@ -1,0 +1,12 @@
+{
+  "appId": "com.example.pupverse",
+  "appName": "PupVerse",
+  "webDir": "dist",
+  "backgroundColor": "#080e1c",
+  "loggingBehavior": "debug",
+  "ios": {
+    "contentInset": "never",
+    "preferredContentMode": "mobile",
+    "allowsLinkPreview": false
+  }
+}
